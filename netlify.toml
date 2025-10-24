@@ -1,0 +1,44 @@
+[build]
+  # Build command
+  command = "npm run build"
+  
+  # Directory to deploy (static files)
+  publish = ".next"
+  
+  # Environment variables for build
+  [build.environment]
+    NODE_VERSION = "20"
+    NPM_VERSION = "10"
+    
+# Redirects for Next.js app router and API routes
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/_next/static/*"
+  to = "/_next/static/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Headers for security and performance
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+# Function configuration
+[functions]
+  # Node.js version for functions
+  node_version = "20"
+  
+  # Directory for Netlify functions
+  directory = "netlify/functions"
