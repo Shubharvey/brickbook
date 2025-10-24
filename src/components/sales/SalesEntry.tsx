@@ -46,6 +46,9 @@ export default function SalesEntry() {
   const [selectedCustomer, setSelectedCustomer] = useState("");
   const [customerSearch, setCustomerSearch] = useState("");
   const [showCustomerDropdown, setShowCustomerDropdown] = useState(false);
+  const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "" });
+  const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [items, setItems] = useState<SaleItem[]>([
     { id: "1", name: "", quantity: 1, price: 0, total: 0 },
   ]);
@@ -106,6 +109,46 @@ export default function SalesEntry() {
     setSelectedCustomer(customerId);
     setShowCustomerDropdown(false);
     setCustomerSearch("");
+  };
+
+  const handleCreateCustomer = async () => {
+    if (!newCustomer.name.trim()) {
+      alert("Please enter customer name");
+      return;
+    }
+
+    setIsCreatingCustomer(true);
+    try {
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: newCustomer.name.trim(),
+          phone: newCustomer.phone.trim() || null,
+        }),
+      });
+
+      if (response.ok) {
+        const createdCustomer = await response.json();
+        setCustomers([...customers, createdCustomer]);
+        setSelectedCustomer(createdCustomer.id);
+        setNewCustomer({ name: "", phone: "" });
+        setShowNewCustomerForm(false);
+        setShowCustomerDropdown(false);
+        setCustomerSearch("");
+        alert("Customer created successfully!");
+      } else {
+        alert("Failed to create customer");
+      }
+    } catch (error) {
+      console.error("Failed to create customer:", error);
+      alert("Failed to create customer");
+    } finally {
+      setIsCreatingCustomer(false);
+    }
   };
 
   const addItem = () => {
@@ -277,32 +320,124 @@ export default function SalesEntry() {
                     />
                   </div>
 
-                  {showCustomerDropdown && customerSearch && (
+                  {showCustomerDropdown && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {filteredCustomers.length > 0 ? (
-                        filteredCustomers.map((customer) => (
-                          <div
-                            key={customer.id}
-                            className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
-                            onClick={() => handleCustomerSelect(customer.id)}
-                          >
-                            <div className="font-medium">{customer.name}</div>
-                            {customer.phone && (
-                              <div className="text-sm text-gray-500">
-                                {customer.phone}
-                              </div>
-                            )}
-                          </div>
-                        ))
-                      ) : (
+                      {customerSearch && filteredCustomers.length > 0 && (
+                        <>
+                          {filteredCustomers.map((customer) => (
+                            <div
+                              key={customer.id}
+                              className="px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0"
+                              onClick={() => handleCustomerSelect(customer.id)}
+                            >
+                              <div className="font-medium">{customer.name}</div>
+                              {customer.phone && (
+                                <div className="text-sm text-gray-500">
+                                  {customer.phone}
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {customerSearch && filteredCustomers.length === 0 && (
                         <div className="px-3 py-2 text-gray-500 text-sm">
                           No customers found
                         </div>
                       )}
+
+                      <div className="border-t p-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-full justify-start"
+                          onClick={() => {
+                            setShowNewCustomerForm(true);
+                            setShowCustomerDropdown(false);
+                          }}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add New Customer
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full justify-start"
+                  onClick={() => {
+                    setShowNewCustomerForm(true);
+                    setShowCustomerDropdown(false);
+                    setCustomerSearch("");
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add New Customer
+                </Button>
               </div>
+
+              {showNewCustomerForm && (
+                <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
+                  <h4 className="font-medium text-gray-900 mb-3">
+                    Add New Customer
+                  </h4>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="new-customer-name">Customer Name *</Label>
+                      <Input
+                        id="new-customer-name"
+                        placeholder="Enter customer name"
+                        value={newCustomer.name}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            name: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="new-customer-phone">Phone Number</Label>
+                      <Input
+                        id="new-customer-phone"
+                        placeholder="Enter phone number"
+                        value={newCustomer.phone}
+                        onChange={(e) =>
+                          setNewCustomer({
+                            ...newCustomer,
+                            phone: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={handleCreateCustomer}
+                        disabled={
+                          isCreatingCustomer || !newCustomer.name.trim()
+                        }
+                      >
+                        {isCreatingCustomer ? "Creating..." : "Create Customer"}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setShowNewCustomerForm(false);
+                          setNewCustomer({ name: "", phone: "" });
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {selectedCustomer && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md">

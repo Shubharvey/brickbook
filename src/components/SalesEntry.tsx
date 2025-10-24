@@ -1,151 +1,177 @@
-'use client'
+"use client";
 
-import { useState, useEffect } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Badge } from '@/components/ui/badge'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Separator } from '@/components/ui/separator'
-import { 
-  ShoppingCart, 
-  Plus, 
-  Search, 
+import { useState, useEffect } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Separator } from "@/components/ui/separator";
+import {
+  ShoppingCart,
+  Plus,
+  Search,
   Trash2,
   IndianRupee,
   Package,
   Calendar,
   User,
   Receipt,
-  AlertCircle
-} from 'lucide-react'
+  AlertCircle,
+} from "lucide-react";
 
 interface Customer {
-  id: string
-  name: string
-  phone?: string
-  email?: string
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
 }
 
 interface SaleItem {
-  id: string
-  name: string
-  quantity: number
-  rate: number
-  amount: number
+  id: string;
+  name: string;
+  quantity: number;
+  rate: number;
+  amount: number;
 }
 
 interface Sale {
-  id: string
-  invoiceNo: string
-  customer: Customer
-  items: any[]
-  totalAmount: number
-  paidAmount: number
-  dueAmount: number
-  paymentType: string
-  status: string
-  notes?: string
-  createdAt: string
+  id: string;
+  invoiceNo: string;
+  customer: Customer;
+  items: any[];
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  paymentType: string;
+  status: string;
+  notes?: string;
+  createdAt: string;
 }
 
 export default function SalesEntry() {
-  const [customers, setCustomers] = useState<Customer[]>([])
-  const [sales, setSales] = useState<Sale[]>([])
-  const [loading, setLoading] = useState(true)
-  const [isSaleDialogOpen, setIsSaleDialogOpen] = useState(false)
-  const [selectedCustomer, setSelectedCustomer] = useState('')
-  const [paymentType, setPaymentType] = useState('cash')
-  const [paidAmount, setPaidAmount] = useState('')
-  const [notes, setNotes] = useState('')
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isSaleDialogOpen, setIsSaleDialogOpen] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [paymentType, setPaymentType] = useState("cash");
+  const [paidAmount, setPaidAmount] = useState("");
+  const [notes, setNotes] = useState("");
   const [items, setItems] = useState<SaleItem[]>([
-    { id: '1', name: '', quantity: 1, rate: 0, amount: 0 }
-  ])
+    { id: "1", name: "", quantity: 1, rate: 0, amount: 0 },
+  ]);
 
   useEffect(() => {
-    fetchCustomers()
-    fetchSales()
-  }, [])
+    fetchCustomers();
+    fetchSales();
+  }, []);
 
   const fetchCustomers = async () => {
     try {
-      const response = await fetch('/api/customers')
+      const response = await fetch("/api/customers");
       if (response.ok) {
-        const data = await response.json()
-        setCustomers(data)
+        const data = await response.json();
+        setCustomers(data);
       }
     } catch (error) {
-      console.error('Failed to fetch customers:', error)
+      console.error("Failed to fetch customers:", error);
     }
-  }
+  };
 
   const fetchSales = async () => {
     try {
-      const response = await fetch('/api/sales')
+      const response = await fetch("/api/sales");
       if (response.ok) {
-        const data = await response.json()
-        setSales(data)
+        const data = await response.json();
+        setSales(data);
       }
     } catch (error) {
-      console.error('Failed to fetch sales:', error)
+      console.error("Failed to fetch sales:", error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const addItem = () => {
     const newItem: SaleItem = {
       id: Date.now().toString(),
-      name: '',
+      name: "",
       quantity: 1,
       rate: 0,
-      amount: 0
-    }
-    setItems([...items, newItem])
-  }
+      amount: 0,
+    };
+    setItems([...items, newItem]);
+  };
 
   const removeItem = (id: string) => {
     if (items.length > 1) {
-      setItems(items.filter(item => item.id !== id))
+      setItems(items.filter((item) => item.id !== id));
     }
-  }
+  };
 
-  const updateItem = (id: string, field: keyof SaleItem, value: string | number) => {
-    setItems(items.map(item => {
-      if (item.id === id) {
-        const updatedItem = { ...item, [field]: value }
-        if (field === 'quantity' || field === 'rate') {
-          updatedItem.amount = updatedItem.quantity * updatedItem.rate
+  const updateItem = (
+    id: string,
+    field: keyof SaleItem,
+    value: string | number
+  ) => {
+    setItems(
+      items.map((item) => {
+        if (item.id === id) {
+          const updatedItem = { ...item, [field]: value };
+          if (field === "quantity" || field === "rate") {
+            updatedItem.amount = updatedItem.quantity * updatedItem.rate;
+          }
+          return updatedItem;
         }
-        return updatedItem
-      }
-      return item
-    }))
-  }
+        return item;
+      })
+    );
+  };
 
   const getTotalAmount = () => {
-    return items.reduce((sum, item) => sum + item.amount, 0)
-  }
+    return items.reduce((sum, item) => sum + item.amount, 0);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
+    e.preventDefault();
+
     if (!selectedCustomer) {
-      alert('Please select a customer')
-      return
+      alert("Please select a customer");
+      return;
     }
 
-    const totalAmount = getTotalAmount()
-    const paid = parseFloat(paidAmount) || (paymentType === 'cash' ? totalAmount : 0)
+    const totalAmount = getTotalAmount();
+    const paid =
+      parseFloat(paidAmount) || (paymentType === "cash" ? totalAmount : 0);
 
     try {
-      const response = await fetch('/api/sales', {
-        method: 'POST',
+      const response = await fetch("/api/sales", {
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify({
           customerId: selectedCustomer,
@@ -153,40 +179,40 @@ export default function SalesEntry() {
           totalAmount,
           paidAmount: paid,
           paymentType,
-          notes
+          notes,
         }),
-      })
+      });
 
       if (response.ok) {
-        await fetchSales()
-        setIsSaleDialogOpen(false)
-        resetForm()
+        await fetchSales();
+        setIsSaleDialogOpen(false);
+        resetForm();
       }
     } catch (error) {
-      console.error('Failed to create sale:', error)
+      console.error("Failed to create sale:", error);
     }
-  }
+  };
 
   const resetForm = () => {
-    setSelectedCustomer('')
-    setPaymentType('cash')
-    setPaidAmount('')
-    setNotes('')
-    setItems([{ id: '1', name: '', quantity: 1, rate: 0, amount: 0 }])
-  }
+    setSelectedCustomer("");
+    setPaymentType("cash");
+    setPaidAmount("");
+    setNotes("");
+    setItems([{ id: "1", name: "", quantity: 1, rate: 0, amount: 0 }]);
+  };
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'paid':
-        return <Badge className="bg-green-100 text-green-800">Paid</Badge>
-      case 'partial':
-        return <Badge className="bg-yellow-100 text-yellow-800">Partial</Badge>
-      case 'pending':
-        return <Badge className="bg-red-100 text-red-800">Pending</Badge>
+      case "paid":
+        return <Badge className="bg-green-100 text-green-800">Paid</Badge>;
+      case "partial":
+        return <Badge className="bg-yellow-100 text-yellow-800">Partial</Badge>;
+      case "pending":
+        return <Badge className="bg-red-100 text-red-800">Pending</Badge>;
       default:
-        return <Badge variant="outline">{status}</Badge>
+        return <Badge variant="outline">{status}</Badge>;
     }
-  }
+  };
 
   if (loading) {
     return (
@@ -196,7 +222,7 @@ export default function SalesEntry() {
           <p className="mt-2 text-gray-600">Loading sales...</p>
         </div>
       </div>
-    )
+    );
   }
 
   return (
@@ -207,7 +233,7 @@ export default function SalesEntry() {
           <h2 className="text-2xl font-bold text-gray-900">Sales Entry</h2>
           <p className="text-gray-600">Manage your sales transactions</p>
         </div>
-        
+
         <Dialog open={isSaleDialogOpen} onOpenChange={setIsSaleDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
@@ -218,14 +244,15 @@ export default function SalesEntry() {
           <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Sale</DialogTitle>
-              <DialogDescription>
-                Add a new sales transaction
-              </DialogDescription>
+              <DialogDescription>Add a new sales transaction</DialogDescription>
             </DialogHeader>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="customer">Customer *</Label>
-                <Select value={selectedCustomer} onValueChange={setSelectedCustomer}>
+                <Select
+                  value={selectedCustomer}
+                  onValueChange={setSelectedCustomer}
+                >
                   <SelectTrigger>
                     <SelectValue placeholder="Select a customer" />
                   </SelectTrigger>
@@ -247,21 +274,35 @@ export default function SalesEntry() {
                       <Input
                         placeholder="Item name"
                         value={item.name}
-                        onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                        onChange={(e) =>
+                          updateItem(item.id, "name", e.target.value)
+                        }
                         className="flex-1"
                       />
                       <Input
                         type="number"
                         placeholder="Qty"
                         value={item.quantity}
-                        onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                        onChange={(e) =>
+                          updateItem(
+                            item.id,
+                            "quantity",
+                            parseInt(e.target.value) || 0
+                          )
+                        }
                         className="w-20"
                       />
                       <Input
                         type="number"
                         placeholder="Rate"
                         value={item.rate}
-                        onChange={(e) => updateItem(item.id, 'rate', parseFloat(e.target.value) || 0)}
+                        onChange={(e) =>
+                          updateItem(
+                            item.id,
+                            "rate",
+                            parseFloat(e.target.value) || 0
+                          )
+                        }
                         className="w-24"
                       />
                       <div className="w-24 text-right font-medium">
@@ -278,7 +319,12 @@ export default function SalesEntry() {
                       </Button>
                     </div>
                   ))}
-                  <Button type="button" variant="outline" onClick={addItem} className="w-full">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addItem}
+                    className="w-full"
+                  >
                     <Plus className="w-4 h-4 mr-2" />
                     Add Item
                   </Button>
@@ -300,7 +346,7 @@ export default function SalesEntry() {
                 </div>
                 <div>
                   <Label htmlFor="paidAmount">
-                    Paid Amount {paymentType === 'cash' && '(Auto-filled)'}
+                    Paid Amount {paymentType === "cash" && "(Auto-filled)"}
                   </Label>
                   <Input
                     id="paidAmount"
@@ -308,7 +354,7 @@ export default function SalesEntry() {
                     placeholder="0.00"
                     value={paidAmount}
                     onChange={(e) => setPaidAmount(e.target.value)}
-                    disabled={paymentType === 'cash'}
+                    disabled={paymentType === "cash"}
                   />
                 </div>
               </div>
@@ -334,12 +380,14 @@ export default function SalesEntry() {
               </div>
 
               <div className="flex justify-end space-x-2">
-                <Button type="button" variant="outline" onClick={() => setIsSaleDialogOpen(false)}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsSaleDialogOpen(false)}
+                >
                   Cancel
                 </Button>
-                <Button type="submit">
-                  Create Sale
-                </Button>
+                <Button type="submit">Create Sale</Button>
               </div>
             </form>
           </DialogContent>
@@ -366,8 +414,13 @@ export default function SalesEntry() {
               <div>
                 <p className="text-sm text-gray-600">Today's Revenue</p>
                 <p className="text-xl font-bold">
-                  ₹{sales
-                    .filter(s => new Date(s.createdAt).toDateString() === new Date().toDateString())
+                  ₹
+                  {sales
+                    .filter(
+                      (s) =>
+                        new Date(s.createdAt).toDateString() ===
+                        new Date().toDateString()
+                    )
                     .reduce((sum, s) => sum + s.paidAmount, 0)
                     .toFixed(0)}
                 </p>
@@ -395,7 +448,7 @@ export default function SalesEntry() {
               <div>
                 <p className="text-sm text-gray-600">Cash Sales</p>
                 <p className="text-xl font-bold">
-                  {sales.filter(s => s.paymentType === 'cash').length}
+                  {sales.filter((s) => s.paymentType === "cash").length}
                 </p>
               </div>
             </div>
@@ -413,8 +466,12 @@ export default function SalesEntry() {
           {sales.length === 0 ? (
             <div className="text-center py-8">
               <ShoppingCart className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No sales yet</h3>
-              <p className="text-gray-600 mb-4">Get started by creating your first sale</p>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                No sales yet
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Get started by creating your first sale
+              </p>
               <Button onClick={() => setIsSaleDialogOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Your First Sale
@@ -427,7 +484,9 @@ export default function SalesEntry() {
                   <div className="flex items-start justify-between mb-3">
                     <div>
                       <div className="flex items-center space-x-2 mb-1">
-                        <h3 className="font-semibold text-gray-900">{sale.invoiceNo}</h3>
+                        <h3 className="font-semibold text-gray-900">
+                          {sale.invoiceNo}
+                        </h3>
                         {getStatusBadge(sale.status)}
                       </div>
                       <div className="flex items-center space-x-4 text-sm text-gray-600">
@@ -446,7 +505,9 @@ export default function SalesEntry() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-bold text-gray-900">₹{sale.totalAmount.toFixed(2)}</p>
+                      <p className="text-lg font-bold text-gray-900">
+                        ₹{sale.totalAmount.toFixed(2)}
+                      </p>
                       <p className="text-sm text-gray-600">
                         Paid: ₹{sale.paidAmount.toFixed(2)}
                       </p>
@@ -457,21 +518,26 @@ export default function SalesEntry() {
                       )}
                     </div>
                   </div>
-                  
+
                   {sale.items && sale.items.length > 0 && (
                     <div className="bg-gray-50 rounded p-2 mb-2">
                       <div className="text-xs text-gray-600 mb-1">Items:</div>
                       <div className="space-y-1">
                         {sale.items.map((item: any, index: number) => (
-                          <div key={index} className="text-sm flex justify-between">
-                            <span>{item.name} x{item.quantity}</span>
-                            <span>₹{item.amount?.toFixed(2) || '0.00'}</span>
+                          <div
+                            key={index}
+                            className="text-sm flex justify-between"
+                          >
+                            <span>
+                              {item.name} x{item.quantity}
+                            </span>
+                            <span>₹{item.amount?.toFixed(2) || "0.00"}</span>
                           </div>
                         ))}
                       </div>
                     </div>
                   )}
-                  
+
                   {sale.notes && (
                     <div className="text-sm text-gray-600 italic">
                       Note: {sale.notes}
@@ -484,5 +550,5 @@ export default function SalesEntry() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }
