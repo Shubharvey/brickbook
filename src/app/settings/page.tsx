@@ -1,10 +1,10 @@
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import ReportsManagement from "@/components/reports/ReportsManagement";
+import SettingsManagement from "@/components/settings/SettingsManagement";
 
-export default function ReportsPage() {
+export default function SettingsPage() {
   return (
     <DashboardLayout>
-      <ReportsManagement />
+      <SettingsManagement />
     </DashboardLayout>
   );
 }
