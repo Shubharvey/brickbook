@@ -1,9 +1,9 @@
 "use client";
 
-import { useAuth } from "@/contexts/AuthContext";
-import AuthForm from "@/components/auth/LoginForm";
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import DashboardPage from "@/components/dashboard/DashboardPage";
+import { useAuth } from "../contexts/AuthContext";
+import AuthForm from "../components/auth/LoginForm";
+import DashboardLayout from "../components/layout/DashboardLayout";
+import DashboardPage from "../components/dashboard/DashboardPage";
 
 export default function Home() {
   const { user, isLoading } = useAuth();
