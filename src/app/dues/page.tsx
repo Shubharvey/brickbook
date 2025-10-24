@@ -1,5 +1,5 @@
-import DashboardLayout from "@/components/layout/DashboardLayout";
-import DuesManagement from "@/components/dues/DuesManagement";
+import DashboardLayout from "../../components/layout/DashboardLayout";
+import DuesManagement from "../../components/dues/DuesManagement";
 
 export default function DuesPage() {
   return (
