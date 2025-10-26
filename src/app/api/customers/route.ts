@@ -55,6 +55,35 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for duplicate customer
+    const existingCustomer = await db.customer.findFirst({
+      where: {
+        userId: decoded.id,
+        OR: [
+          { name: { equals: name, mode: "insensitive" } },
+          ...(phone ? [{ phone }] : []),
+          ...(email ? [{ email: { equals: email, mode: "insensitive" } }] : []),
+        ],
+      },
+    });
+
+    if (existingCustomer) {
+      let duplicateField = "name";
+      if (phone && existingCustomer.phone === phone) {
+        duplicateField = "phone number";
+      } else if (
+        email &&
+        existingCustomer.email?.toLowerCase() === email.toLowerCase()
+      ) {
+        duplicateField = "email";
+      }
+
+      return NextResponse.json(
+        { error: `Customer with this ${duplicateField} already exists` },
+        { status: 409 }
+      );
+    }
+
     const customer = await db.customer.create({
       data: {
         name,

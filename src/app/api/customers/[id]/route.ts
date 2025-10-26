@@ -1,66 +1,67 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { NextRequest, NextResponse } from "next/server";
+import { db } from "@/lib/db";
+import { verifyToken } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const customer = await db.customer.findUnique({
-      where: { id: params.id },
-      include: {
-        sales: {
-          orderBy: { createdAt: 'desc' },
-          take: 10
-        }
-      }
-    })
-
-    if (!customer) {
-      return NextResponse.json({ error: 'Customer not found' }, { status: 404 })
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    return NextResponse.json(customer)
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 })
-  }
-}
+    const token = authHeader.substring(7);
+    const decoded = verifyToken(token);
 
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const body = await request.json()
-    const { name, phone, email, address } = body
+    if (!decoded) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
 
-    const customer = await db.customer.update({
-      where: { id: params.id },
-      data: {
-        name,
-        phone,
-        email,
-        address
-      }
-    })
+    const customerId = params.id;
 
-    return NextResponse.json(customer)
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 })
-  }
-}
+    // Get customer's sales
+    const sales = await db.sale.findMany({
+      where: {
+        customerId: customerId,
+        userId: decoded.id,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 10, // Get recent 10 purchases
+    });
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  try {
-    await db.customer.delete({
-      where: { id: params.id }
-    })
+    // Calculate statistics
+    const totalSales = sales.length;
+    const totalAmount = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+    const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
+    const dueAmount = totalAmount - totalPaid;
 
-    return NextResponse.json({ message: 'Customer deleted successfully' })
-  } catch (error) {
-    return NextResponse.json({ error: 'Failed to delete customer' }, { status: 500 })
+    // Format recent purchases
+    const recentPurchases = sales.map((sale) => ({
+      id: sale.id,
+      invoiceNo: sale.invoiceNo,
+      items: sale.items as any[],
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount,
+      dueAmount: sale.dueAmount,
+      createdAt: sale.createdAt.toISOString(),
+    }));
+
+    const stats = {
+      totalSales,
+      totalAmount,
+      dueAmount,
+      purchaseCount: totalSales,
+      recentPurchases,
+    };
+
+    return NextResponse.json(stats);
+  } catch (error: any) {
+    console.error("Customer stats fetch error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch customer statistics" },
+      { status: 500 }
+    );
   }
 }
