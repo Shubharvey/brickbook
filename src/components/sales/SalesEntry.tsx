@@ -24,16 +24,56 @@ import {
   Receipt,
   Search,
   Printer,
+  Truck,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
-const DEFAULT_ITEMS = ["Awwal", "2 number", "Peera", "Chatka", "Addha"];
+// Updated item names as per requirements
+const DEFAULT_ITEMS = [
+  "Awwal",
+  "Doyam",
+  "Number 3",
+  "Seedha Chatka",
+  "Talsa",
+  "Peela",
+  "Addha",
+  "teda",
+  "Ravas",
+  "Malwa",
+];
+
+// Payment modes as per your vision
+const PAYMENT_MODES = ["cash", "upi", "bank_transfer", "cheque"] as const;
+
+const CUSTOMER_TYPES = [
+  "retailer",
+  "contractor",
+  "builder",
+  "individual",
+] as const;
 
 interface Customer {
   id: string;
   name: string;
   phone?: string;
-  address?: string;
+  // Enhanced address fields
+  street?: string;
+  city?: string;
+  district?: string;
+  pincode?: string;
+  // New fields
+  customerType: (typeof CUSTOMER_TYPES)[number];
+  joiningDate: string;
+  gstNumber?: string;
+  status: "active" | "dormant" | "blocked";
+  preferredContact: "call" | "whatsapp";
+  notes?: string;
+  // Auto-calculated fields
+  totalLifetimeValue: number;
+  dueAmount: number;
+  lastPurchaseDate?: string;
+  averageMonthlyPurchase: number;
 }
 
 interface SaleItem {
@@ -54,7 +94,13 @@ export default function SalesEntry() {
   const [newCustomer, setNewCustomer] = useState({
     name: "",
     phone: "",
-    address: "",
+    street: "",
+    city: "",
+    district: "",
+    pincode: "",
+    customerType: "individual" as (typeof CUSTOMER_TYPES)[number],
+    gstNumber: "",
+    preferredContact: "call" as "call" | "whatsapp",
   });
   const [isCreatingCustomer, setIsCreatingCustomer] = useState(false);
   const [items, setItems] = useState<SaleItem[]>([
@@ -63,6 +109,8 @@ export default function SalesEntry() {
   const [paymentType, setPaymentType] = useState<"cash" | "credit" | "partial">(
     "cash"
   );
+  const [paymentMode, setPaymentMode] =
+    useState<(typeof PAYMENT_MODES)[number]>("cash");
   const [paidAmount, setPaidAmount] = useState("");
   const [dueDate, setDueDate] = useState("");
   const [notes, setNotes] = useState("");
@@ -73,6 +121,30 @@ export default function SalesEntry() {
   const [saleDate, setSaleDate] = useState("");
   const [isBackDate, setIsBackDate] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [errors, setErrors] = useState<{
+    customer?: string;
+    items?: string;
+    payment?: string;
+    dueDate?: string;
+  }>({});
+
+  // NEW: Delivery management
+  const [deliveryAddress, setDeliveryAddress] = useState({
+    street: "",
+    city: "",
+    district: "",
+    pincode: "",
+  });
+  const [useDifferentDeliveryAddress, setUseDifferentDeliveryAddress] =
+    useState(false);
+  const [deliveryDate, setDeliveryDate] = useState("");
+  const [deliveryStatus, setDeliveryStatus] = useState<
+    "pending" | "scheduled" | "delivered" | "partial"
+  >("pending");
+
+  // NEW: Payment reference fields
+  const [paymentReference, setPaymentReference] = useState("");
+  const [bankTransactionId, setBankTransactionId] = useState("");
 
   // ---------- FIX: ref to dropdown wrapper so outside clicks can be detected ----------
   const dropdownRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +157,6 @@ export default function SalesEntry() {
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // only close if click was outside the dropdownRef element
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
@@ -123,20 +194,27 @@ export default function SalesEntry() {
       (customer) =>
         customer.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
         customer.phone?.includes(customerSearch) ||
-        customer.address?.toLowerCase().includes(customerSearch.toLowerCase())
+        customer.street?.toLowerCase().includes(customerSearch.toLowerCase()) ||
+        customer.city?.toLowerCase().includes(customerSearch.toLowerCase())
     );
   }, [customers, customerSearch]);
 
   const handleCustomerSelect = (customerId: string) => {
-    console.log("Selecting customer:", customerId);
     setSelectedCustomer(customerId);
     setShowCustomerDropdown(false);
     const selectedCustomerData = customers.find((c) => c.id === customerId);
     if (selectedCustomerData) {
       setCustomerSearch(selectedCustomerData.name);
-      console.log("Customer selected successfully:", selectedCustomerData);
-    } else {
-      console.error("Customer not found:", customerId);
+
+      // Auto-fill delivery address with customer's address
+      if (!useDifferentDeliveryAddress) {
+        setDeliveryAddress({
+          street: selectedCustomerData.street || "",
+          city: selectedCustomerData.city || "",
+          district: selectedCustomerData.district || "",
+          pincode: selectedCustomerData.pincode || "",
+        });
+      }
     }
   };
 
@@ -157,7 +235,18 @@ export default function SalesEntry() {
         body: JSON.stringify({
           name: newCustomer.name.trim(),
           phone: newCustomer.phone.trim() || null,
-          address: newCustomer.address.trim() || null,
+          street: newCustomer.street.trim() || null,
+          city: newCustomer.city.trim() || null,
+          district: newCustomer.district.trim() || null,
+          pincode: newCustomer.pincode.trim() || null,
+          customerType: newCustomer.customerType,
+          gstNumber: newCustomer.gstNumber.trim() || null,
+          preferredContact: newCustomer.preferredContact,
+          joiningDate: new Date().toISOString(),
+          status: "active",
+          totalLifetimeValue: 0,
+          dueAmount: 0,
+          averageMonthlyPurchase: 0,
         }),
       });
 
@@ -165,7 +254,17 @@ export default function SalesEntry() {
         const createdCustomer = await response.json();
         setCustomers([...customers, createdCustomer]);
         setSelectedCustomer(createdCustomer.id);
-        setNewCustomer({ name: "", phone: "", address: "" });
+        setNewCustomer({
+          name: "",
+          phone: "",
+          street: "",
+          city: "",
+          district: "",
+          pincode: "",
+          customerType: "individual",
+          gstNumber: "",
+          preferredContact: "call",
+        });
         setShowNewCustomerForm(false);
         setShowCustomerDropdown(false);
         setCustomerSearch("");
@@ -245,6 +344,25 @@ export default function SalesEntry() {
     return Math.max(0, grandTotal - paid);
   };
 
+  const validateForm = () => {
+    const newErrors: typeof errors = {};
+    if (!selectedCustomer) newErrors.customer = "Please select a customer";
+    const hasInvalidItems = items.some((item) => !item.name || item.price <= 0);
+    if (hasInvalidItems)
+      newErrors.items = "Please fill all item details with valid prices";
+    if ((paymentType === "credit" || paymentType === "partial") && !dueDate) {
+      newErrors.dueDate = "Due date is required for credit/partial payments";
+    }
+    if (
+      paymentType === "partial" &&
+      (!paidAmount || parseFloat(paidAmount) <= 0)
+    ) {
+      newErrors.payment = "Paid amount is required for partial payments";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handlePrintBill = () => {
     if (
       !selectedCustomer ||
@@ -293,7 +411,15 @@ export default function SalesEntry() {
             <h3>Customer Information</h3>
             <p><strong>Name:</strong> ${customerData?.name || "N/A"}</p>
             <p><strong>Phone:</strong> ${customerData?.phone || "N/A"}</p>
-            <p><strong>Address:</strong> ${customerData?.address || "N/A"}</p>
+            <p><strong>Address:</strong> ${customerData?.street || "N/A"}, ${
+      customerData?.city || ""
+    }, ${customerData?.district || ""} - ${customerData?.pincode || ""}</p>
+            <p><strong>Customer Type:</strong> ${
+              customerData?.customerType
+                ? customerData.customerType.charAt(0).toUpperCase() +
+                  customerData.customerType.slice(1)
+                : "N/A"
+            }</p>
           </div>
           
           <div class="items">
@@ -357,6 +483,10 @@ export default function SalesEntry() {
                 ? "Partial"
                 : "Credit"
             }</p>
+            <p><strong>Payment Mode:</strong> ${
+              paymentMode.charAt(0).toUpperCase() +
+              paymentMode.slice(1).replace("_", " ")
+            }</p>
             ${
               dueDate
                 ? `<p><strong>Due Date:</strong> ${new Date(
@@ -394,25 +524,13 @@ export default function SalesEntry() {
   };
 
   const handleSaveSale = async () => {
-    console.log("Save sale clicked. Selected customer:", selectedCustomer);
-    console.log("Items:", items);
-    console.log("Customers available:", customers);
-
-    if (
-      !selectedCustomer ||
-      items.some((item) => !item.name || item.price <= 0)
-    ) {
-      alert("Please fill in all required fields");
+    if (!validateForm()) {
+      alert("Please fix the errors before saving");
       return;
     }
 
     if (isBackDate && !saleDate) {
       alert("Please select a sale date for back date entry");
-      return;
-    }
-
-    if ((paymentType === "credit" || paymentType === "partial") && !dueDate) {
-      alert("Please specify the due date for credit payment");
       return;
     }
 
@@ -436,7 +554,6 @@ export default function SalesEntry() {
         finalPaidAmount = parseFloat(paidAmount) || 0;
       }
 
-      // Determine the sale date
       const finalSaleDate =
         isBackDate && saleDate ? new Date(saleDate) : new Date();
 
@@ -456,6 +573,9 @@ export default function SalesEntry() {
         totalAmount: grandTotal,
         paidAmount: finalPaidAmount,
         paymentType: finalPaymentType,
+        paymentMode,
+        paymentReference: paymentReference || null,
+        bankTransactionId: bankTransactionId || null,
         dueDate:
           finalPaymentType === "credit" || finalPaymentType === "partial"
             ? dueDate
@@ -463,6 +583,10 @@ export default function SalesEntry() {
         notes: notes || null,
         saleDate: finalSaleDate.toISOString(),
         isBackDate,
+        // NEW: Delivery information
+        deliveryAddress: useDifferentDeliveryAddress ? deliveryAddress : null,
+        deliveryDate: deliveryDate || null,
+        deliveryStatus,
       };
 
       const response = await fetch("/api/sales", {
@@ -480,6 +604,7 @@ export default function SalesEntry() {
         setCustomerSearch("");
         setItems([{ id: "1", name: "", quantity: 1, price: 0, total: 0 }]);
         setPaymentType("cash");
+        setPaymentMode("cash");
         setPaidAmount("");
         setDueDate("");
         setNotes("");
@@ -487,6 +612,13 @@ export default function SalesEntry() {
         setDiscountValue("");
         setSaleDate("");
         setIsBackDate(false);
+        setErrors({});
+        setDeliveryAddress({ street: "", city: "", district: "", pincode: "" });
+        setUseDifferentDeliveryAddress(false);
+        setDeliveryDate("");
+        setDeliveryStatus("pending");
+        setPaymentReference("");
+        setBankTransactionId("");
         alert("Sale saved successfully!");
       } else {
         alert("Failed to save sale");
@@ -521,37 +653,38 @@ export default function SalesEntry() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <ShoppingCart className="h-5 w-5 mr-2" />
+                <User className="h-5 w-5 mr-2" />
                 Customer Information
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2" ref={dropdownRef}>
-                <Label htmlFor="customer-search">Search Customer *</Label>
+                <Label htmlFor="customer-search">
+                  Search Customer <span className="text-red-500">*</span>
+                </Label>
                 <div className="relative">
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
                       id="customer-search"
-                      placeholder={
-                        selectedCustomer
-                          ? "Customer selected..."
-                          : "Type customer name or phone number..."
-                      }
+                      placeholder="Type customer name or phone number..."
                       value={customerSearch}
                       onChange={(e) => {
-                        setCustomerSearch(e.target.value);
+                        const value = e.target.value;
+                        setCustomerSearch(value);
                         setShowCustomerDropdown(true);
-                        // Clear selection if search is cleared
-                        if (e.target.value === "") {
+                        if (
+                          value === "" ||
+                          (selectedCustomer &&
+                            !customers
+                              .find((c) => c.id === selectedCustomer)
+                              ?.name.toLowerCase()
+                              .includes(value.toLowerCase()))
+                        ) {
                           setSelectedCustomer("");
                         }
                       }}
-                      onFocus={() => {
-                        if (customerSearch) {
-                          setShowCustomerDropdown(true);
-                        }
-                      }}
+                      onFocus={() => setShowCustomerDropdown(true)}
                       className={`pl-10 pr-10 ${
                         selectedCustomer ? "bg-green-50 border-green-300" : ""
                       }`}
@@ -566,53 +699,41 @@ export default function SalesEntry() {
                         }}
                         className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                       >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
+                        ×
                       </button>
                     )}
                   </div>
 
-                  {showCustomerDropdown && filteredCustomers.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
-                      {filteredCustomers.map((customer) => (
-                        <div
-                          key={customer.id}
-                          className={`px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 ${
-                            selectedCustomer === customer.id
-                              ? "bg-green-100"
-                              : ""
-                          }`}
-                          onClick={() => {
-                            console.log("Customer clicked:", customer);
-                            handleCustomerSelect(customer.id);
-                          }}
-                        >
-                          <div className="font-medium">{customer.name}</div>
-                          {customer.phone && (
+                  {showCustomerDropdown && (
+                    <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-60 overflow-y-auto">
+                      {filteredCustomers.length > 0 ? (
+                        filteredCustomers.map((customer) => (
+                          <div
+                            key={customer.id}
+                            className={`px-3 py-2 hover:bg-gray-100 cursor-pointer border-b last:border-b-0 ${
+                              selectedCustomer === customer.id
+                                ? "bg-green-100"
+                                : ""
+                            }`}
+                            onClick={() => handleCustomerSelect(customer.id)}
+                          >
+                            <div className="font-medium">{customer.name}</div>
                             <div className="text-sm text-gray-500">
-                              {customer.phone}
+                              {customer.phone} • {customer.customerType}
                             </div>
-                          )}
-                          {customer.address && (
-                            <div className="text-xs text-gray-400 truncate">
-                              {customer.address}
-                            </div>
-                          )}
+                            {customer.dueAmount > 0 && (
+                              <div className="text-xs text-red-600">
+                                Due: ₹{customer.dueAmount.toFixed(2)}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div className="px-3 py-4 text-center text-gray-500">
+                          No customers found
                         </div>
-                      ))}
+                      )}
 
-                      {/* Always show "Add New Customer" option at the bottom */}
                       <div className="border-t p-2 bg-gray-50">
                         <Button
                           variant="outline"
@@ -621,6 +742,12 @@ export default function SalesEntry() {
                           onClick={() => {
                             setShowNewCustomerForm(true);
                             setShowCustomerDropdown(false);
+                            if (customerSearch) {
+                              setNewCustomer((prev) => ({
+                                ...prev,
+                                name: customerSearch,
+                              }));
+                            }
                           }}
                         >
                           <Plus className="h-4 w-4 mr-2" />
@@ -629,37 +756,15 @@ export default function SalesEntry() {
                       </div>
                     </div>
                   )}
-
-                  {showCustomerDropdown &&
-                    customerSearch &&
-                    filteredCustomers.length === 0 && (
-                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg">
-                        <div className="px-3 py-4 text-center text-gray-500">
-                          <div className="mb-2">No customers found</div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="w-full justify-start"
-                            onClick={() => {
-                              setShowNewCustomerForm(true);
-                              setShowCustomerDropdown(false);
-                              // Pre-fill the new customer form with search text
-                              setNewCustomer({
-                                ...newCustomer,
-                                name: customerSearch,
-                              });
-                            }}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add "{customerSearch}" as new customer
-                          </Button>
-                        </div>
-                      </div>
-                    )}
                 </div>
               </div>
 
-              {/* Add New Customer Button (always visible) */}
+              {errors.customer && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{errors.customer}</p>
+                </div>
+              )}
+
               <Button
                 variant="outline"
                 size="sm"
@@ -675,56 +780,165 @@ export default function SalesEntry() {
                 Add New Customer
               </Button>
 
-              {/* New Customer Form */}
+              {/* Enhanced New Customer Form */}
               {showNewCustomerForm && (
                 <div className="p-4 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50">
                   <h4 className="font-medium text-gray-900 mb-3">
                     Add New Customer
                   </h4>
                   <div className="space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label>Customer Name *</Label>
+                        <Input
+                          placeholder="Enter customer name"
+                          value={newCustomer.name}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              name: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Phone Number</Label>
+                        <Input
+                          placeholder="Enter phone number"
+                          value={newCustomer.phone}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              phone: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label>Customer Type</Label>
+                        <Select
+                          value={newCustomer.customerType}
+                          onValueChange={(
+                            value: (typeof CUSTOMER_TYPES)[number]
+                          ) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              customerType: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="individual">
+                              Individual
+                            </SelectItem>
+                            <SelectItem value="retailer">Retailer</SelectItem>
+                            <SelectItem value="contractor">
+                              Contractor
+                            </SelectItem>
+                            <SelectItem value="builder">Builder</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Preferred Contact</Label>
+                        <Select
+                          value={newCustomer.preferredContact}
+                          onValueChange={(value: "call" | "whatsapp") =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              preferredContact: value,
+                            })
+                          }
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="call">Phone Call</SelectItem>
+                            <SelectItem value="whatsapp">WhatsApp</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
                     <div className="space-y-1">
-                      <Label htmlFor="new-customer-name">Customer Name *</Label>
+                      <Label>Street Address</Label>
                       <Input
-                        id="new-customer-name"
-                        placeholder="Enter customer name"
-                        value={newCustomer.name}
+                        placeholder="Enter street address"
+                        value={newCustomer.street}
                         onChange={(e) =>
                           setNewCustomer({
                             ...newCustomer,
-                            name: e.target.value,
+                            street: e.target.value,
                           })
                         }
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="new-customer-phone">Phone Number</Label>
-                      <Input
-                        id="new-customer-phone"
-                        placeholder="Enter phone number"
-                        value={newCustomer.phone}
-                        onChange={(e) =>
-                          setNewCustomer({
-                            ...newCustomer,
-                            phone: e.target.value,
-                          })
-                        }
-                      />
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label>City</Label>
+                        <Input
+                          placeholder="City"
+                          value={newCustomer.city}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              city: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>District</Label>
+                        <Input
+                          placeholder="District"
+                          value={newCustomer.district}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              district: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <Label>Pincode</Label>
+                        <Input
+                          placeholder="Pincode"
+                          value={newCustomer.pincode}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              pincode: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
                     </div>
-                    <div className="space-y-1">
-                      <Label htmlFor="new-customer-address">Address</Label>
-                      <Textarea
-                        id="new-customer-address"
-                        placeholder="Enter customer address"
-                        value={newCustomer.address}
-                        onChange={(e) =>
-                          setNewCustomer({
-                            ...newCustomer,
-                            address: e.target.value,
-                          })
-                        }
-                        rows={2}
-                      />
-                    </div>
+
+                    {newCustomer.customerType !== "individual" && (
+                      <div className="space-y-1">
+                        <Label>GST Number (Optional)</Label>
+                        <Input
+                          placeholder="Enter GST number"
+                          value={newCustomer.gstNumber}
+                          onChange={(e) =>
+                            setNewCustomer({
+                              ...newCustomer,
+                              gstNumber: e.target.value,
+                            })
+                          }
+                        />
+                      </div>
+                    )}
+
                     <div className="flex gap-2">
                       <Button
                         size="sm"
@@ -740,7 +954,17 @@ export default function SalesEntry() {
                         variant="outline"
                         onClick={() => {
                           setShowNewCustomerForm(false);
-                          setNewCustomer({ name: "", phone: "", address: "" });
+                          setNewCustomer({
+                            name: "",
+                            phone: "",
+                            street: "",
+                            city: "",
+                            district: "",
+                            pincode: "",
+                            customerType: "individual",
+                            gstNumber: "",
+                            preferredContact: "call",
+                          });
                         }}
                       >
                         Cancel
@@ -750,7 +974,6 @@ export default function SalesEntry() {
                 </div>
               )}
 
-              {/* Selected Customer Display */}
               {selectedCustomer && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md">
                   <div className="flex items-center justify-between">
@@ -758,23 +981,19 @@ export default function SalesEntry() {
                       <div className="text-sm font-medium text-green-800">
                         ✅ Selected:{" "}
                         {customers.find((c) => c.id === selectedCustomer)?.name}
-                        {customers.find((c) => c.id === selectedCustomer)
-                          ?.phone &&
-                          ` (${
-                            customers.find((c) => c.id === selectedCustomer)
-                              ?.phone
-                          })`}
                       </div>
-                      {customers.find((c) => c.id === selectedCustomer)
-                        ?.address && (
-                        <div className="text-xs text-green-700 mt-1">
-                          📍{" "}
-                          {
-                            customers.find((c) => c.id === selectedCustomer)
-                              ?.address
-                          }
-                        </div>
-                      )}
+                      <div className="text-xs text-green-700">
+                        Type:{" "}
+                        {
+                          customers.find((c) => c.id === selectedCustomer)
+                            ?.customerType
+                        }
+                        {customers.find((c) => c.id === selectedCustomer)
+                          ?.dueAmount > 0 &&
+                          ` • Due: ₹${customers
+                            .find((c) => c.id === selectedCustomer)
+                            ?.dueAmount.toFixed(2)}`}
+                      </div>
                     </div>
                     <Button
                       variant="ghost"
@@ -792,7 +1011,8 @@ export default function SalesEntry() {
               )}
             </CardContent>
           </Card>
-          {/* Items */}
+
+          {/* Items Section - UPDATED: Removed custom input field */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -807,87 +1027,86 @@ export default function SalesEntry() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {items.map((item, index) => (
+              {items.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-2 p-3 border rounded-lg"
+                  className="flex items-center gap-2 p-3 border rounded-lg bg-white"
                 >
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-5 gap-2">
-                    <div className="space-y-1 md:col-span-2">
-                      <Label
-                        htmlFor={`item-name-${item.id}`}
-                        className="text-xs text-gray-600"
-                      >
-                        Item Name
-                      </Label>
-                      <div className="flex gap-1">
-                        <Select
-                          value={item.name}
-                          onValueChange={(value) =>
-                            updateItem(item.id, "name", value)
-                          }
-                        >
-                          <SelectTrigger className="flex-1">
-                            <SelectValue placeholder="Select or type item name" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {DEFAULT_ITEMS.map((defaultItem) => (
-                              <SelectItem key={defaultItem} value={defaultItem}>
-                                {defaultItem}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <Input
-                          placeholder="Or type custom..."
-                          value={
-                            item.name && !DEFAULT_ITEMS.includes(item.name)
-                              ? item.name
-                              : ""
-                          }
-                          onChange={(e) =>
-                            updateItem(item.id, "name", e.target.value)
-                          }
-                          className="w-24"
-                        />
-                      </div>
-                    </div>
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
+                    {/* Item Name - UPDATED: Full width without custom input */}
                     <div className="space-y-1">
-                      <Label
-                        htmlFor={`item-qty-${item.id}`}
-                        className="text-xs text-gray-600"
-                      >
-                        Quantity
+                      <Label className="text-xs text-gray-600">
+                        Item Name{" "}
+                        {!item.name && <span className="text-red-500">*</span>}
                       </Label>
-                      <Input
-                        id={`item-qty-${item.id}`}
-                        type="number"
-                        placeholder="Qty"
-                        min="1"
-                        value={item.quantity}
-                        onChange={(e) =>
-                          updateItem(
-                            item.id,
-                            "quantity",
-                            parseInt(e.target.value) || 1
-                          )
+                      <Select
+                        value={item.name}
+                        onValueChange={(value) =>
+                          updateItem(item.id, "name", value)
                         }
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select brick type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {DEFAULT_ITEMS.map((defaultItem) => (
+                            <SelectItem key={defaultItem} value={defaultItem}>
+                              {defaultItem}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!item.name && (
+                        <p className="text-xs text-red-500">
+                          Item name is required
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Quantity - UPDATED: Better placeholder with 30% opacity */}
+                    <div className="space-y-1">
+                      <Label className="text-xs text-gray-600">Quantity</Label>
+                      <Input
+                        type="number"
+                        placeholder="e.g., 1000"
+                        min="1"
+                        value={item.quantity === 1 ? "" : item.quantity}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          // Allow empty for easy typing
+                          if (value === "") {
+                            updateItem(item.id, "quantity", 1);
+                          } else {
+                            const numValue = parseInt(value);
+                            // Only accept positive numbers
+                            if (!isNaN(numValue) && numValue > 0) {
+                              updateItem(item.id, "quantity", numValue);
+                            }
+                          }
+                        }}
+                        onBlur={(e) => {
+                          // Set to 1 if empty or invalid
+                          if (!e.target.value || parseInt(e.target.value) < 1) {
+                            updateItem(item.id, "quantity", 1);
+                          }
+                        }}
+                        className="text-center placeholder:opacity-30"
                       />
                     </div>
+
                     <div className="space-y-1">
-                      <Label
-                        htmlFor={`item-price-${item.id}`}
-                        className="text-xs text-gray-600"
-                      >
-                        Unit Price
+                      <Label className="text-xs text-gray-600">
+                        Price{" "}
+                        {item.price <= 0 && (
+                          <span className="text-red-500">*</span>
+                        )}
                       </Label>
                       <Input
-                        id={`item-price-${item.id}`}
                         type="number"
-                        placeholder="Price"
                         min="0"
                         step="0.01"
-                        value={item.price}
+                        placeholder="0.00"
+                        value={item.price || ""}
                         onChange={(e) =>
                           updateItem(
                             item.id,
@@ -896,37 +1115,171 @@ export default function SalesEntry() {
                           )
                         }
                       />
+                      {item.price <= 0 && (
+                        <p className="text-xs text-red-500">
+                          Valid price is required
+                        </p>
+                      )}
                     </div>
+
                     <div className="space-y-1">
-                      <Label
-                        htmlFor={`item-total-${item.id}`}
-                        className="text-xs text-gray-600"
-                      >
-                        Total
-                      </Label>
+                      <Label className="text-xs text-gray-600">Total</Label>
                       <Input
-                        id={`item-total-${item.id}`}
-                        placeholder="Total"
                         value={`₹${item.total.toFixed(2)}`}
                         readOnly
-                        className="bg-gray-50"
+                        className="bg-gray-50 font-medium"
                       />
                     </div>
                   </div>
+
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => removeItem(item.id)}
                     disabled={items.length === 1}
-                    className="mt-6"
+                    className="mt-6 text-red-600 hover:text-red-800 hover:bg-red-50"
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               ))}
+
+              {errors.items && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{errors.items}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
-          {/* Payment */}
+
+          {/* NEW: Delivery Management Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Truck className="h-5 w-5 mr-2" />
+                Delivery Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="different-delivery"
+                    checked={useDifferentDeliveryAddress}
+                    onChange={(e) =>
+                      setUseDifferentDeliveryAddress(e.target.checked)
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  <Label
+                    htmlFor="different-delivery"
+                    className="text-sm font-medium"
+                  >
+                    Use different delivery address
+                  </Label>
+                </div>
+              </div>
+
+              {useDifferentDeliveryAddress && (
+                <div className="space-y-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                  <h4 className="font-medium text-gray-900">
+                    Delivery Address
+                  </h4>
+                  <div className="space-y-1">
+                    <Label>Street Address</Label>
+                    <Input
+                      placeholder="Enter delivery street address"
+                      value={deliveryAddress.street}
+                      onChange={(e) =>
+                        setDeliveryAddress({
+                          ...deliveryAddress,
+                          street: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="space-y-1">
+                      <Label>City</Label>
+                      <Input
+                        placeholder="City"
+                        value={deliveryAddress.city}
+                        onChange={(e) =>
+                          setDeliveryAddress({
+                            ...deliveryAddress,
+                            city: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>District</Label>
+                      <Input
+                        placeholder="District"
+                        value={deliveryAddress.district}
+                        onChange={(e) =>
+                          setDeliveryAddress({
+                            ...deliveryAddress,
+                            district: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label>Pincode</Label>
+                      <Input
+                        placeholder="Pincode"
+                        value={deliveryAddress.pincode}
+                        onChange={(e) =>
+                          setDeliveryAddress({
+                            ...deliveryAddress,
+                            pincode: e.target.value,
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="delivery-date">
+                    Delivery Date (Optional)
+                  </Label>
+                  <Input
+                    id="delivery-date"
+                    type="date"
+                    value={deliveryDate}
+                    onChange={(e) => setDeliveryDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delivery-status">Delivery Status</Label>
+                  <Select
+                    value={deliveryStatus}
+                    onValueChange={(
+                      value: "pending" | "scheduled" | "delivered" | "partial"
+                    ) => setDeliveryStatus(value)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="scheduled">Scheduled</SelectItem>
+                      <SelectItem value="partial">Partial Delivery</SelectItem>
+                      <SelectItem value="delivered">Delivered</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Enhanced Payment Section */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -968,23 +1321,47 @@ export default function SalesEntry() {
                 )}
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="payment-type">Payment Type</Label>
-                <Select
-                  value={paymentType}
-                  onValueChange={(value: "cash" | "credit" | "partial") =>
-                    setPaymentType(value)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Full Cash Payment</SelectItem>
-                    <SelectItem value="partial">Partial Payment</SelectItem>
-                    <SelectItem value="credit">Credit/Due Payment</SelectItem>
-                  </SelectContent>
-                </Select>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="payment-type">Payment Type</Label>
+                  <Select
+                    value={paymentType}
+                    onValueChange={(value: "cash" | "credit" | "partial") =>
+                      setPaymentType(value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Full Cash Payment</SelectItem>
+                      <SelectItem value="partial">Partial Payment</SelectItem>
+                      <SelectItem value="credit">Credit/Due Payment</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="payment-mode">Payment Mode</Label>
+                  <Select
+                    value={paymentMode}
+                    onValueChange={(value: (typeof PAYMENT_MODES)[number]) =>
+                      setPaymentMode(value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank_transfer">
+                        Bank Transfer
+                      </SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {(paymentType === "partial" || paymentType === "credit") && (
@@ -1007,6 +1384,12 @@ export default function SalesEntry() {
                     />
                   </div>
 
+                  {errors.payment && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+                      <p className="text-sm text-red-600">{errors.payment}</p>
+                    </div>
+                  )}
+
                   <div className="space-y-2">
                     <Label htmlFor="due-date">Due Date *</Label>
                     <Input
@@ -1018,7 +1401,57 @@ export default function SalesEntry() {
                       required
                     />
                   </div>
+
+                  {errors.dueDate && (
+                    <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+                      <p className="text-sm text-red-600">{errors.dueDate}</p>
+                    </div>
+                  )}
                 </>
+              )}
+
+              {/* Payment Reference Fields */}
+              {(paymentMode === "upi" ||
+                paymentMode === "bank_transfer" ||
+                paymentMode === "cheque") && (
+                <div className="space-y-3 p-3 border border-gray-200 rounded-lg bg-blue-50">
+                  <h4 className="font-medium text-gray-900">
+                    Payment Reference Details
+                  </h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="payment-reference">
+                      {paymentMode === "upi"
+                        ? "UPI Transaction ID"
+                        : paymentMode === "bank_transfer"
+                        ? "Bank Transaction ID"
+                        : "Cheque Number"}{" "}
+                      *
+                    </Label>
+                    <Input
+                      id="payment-reference"
+                      placeholder={`Enter ${
+                        paymentMode === "upi"
+                          ? "UPI Transaction ID"
+                          : paymentMode === "bank_transfer"
+                          ? "Bank Transaction ID"
+                          : "Cheque Number"
+                      }`}
+                      value={
+                        paymentMode === "bank_transfer"
+                          ? bankTransactionId
+                          : paymentReference
+                      }
+                      onChange={(e) => {
+                        if (paymentMode === "bank_transfer") {
+                          setBankTransactionId(e.target.value);
+                        } else {
+                          setPaymentReference(e.target.value);
+                        }
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
               )}
 
               <div className="space-y-2">
@@ -1034,7 +1467,7 @@ export default function SalesEntry() {
           </Card>
         </div>
 
-        {/* Summary */}
+        {/* Summary Section */}
         <div className="space-y-6">
           <Card className="sticky top-6">
             <CardHeader>
@@ -1053,6 +1486,27 @@ export default function SalesEntry() {
                       ? new Date(saleDate).toLocaleDateString()
                       : "Not selected"}
                   </div>
+                </div>
+              )}
+
+              {/* Delivery Info in Summary */}
+              {(useDifferentDeliveryAddress || deliveryDate) && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="text-sm font-medium text-blue-800">
+                    🚚 Delivery Information
+                  </div>
+                  {deliveryDate && (
+                    <div className="text-xs text-blue-700">
+                      Date: {new Date(deliveryDate).toLocaleDateString()}
+                    </div>
+                  )}
+                  {deliveryStatus !== "pending" && (
+                    <div className="text-xs text-blue-700">
+                      Status:{" "}
+                      {deliveryStatus.charAt(0).toUpperCase() +
+                        deliveryStatus.slice(1)}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1082,9 +1536,7 @@ export default function SalesEntry() {
                         value: "none" | "percentage" | "fixed"
                       ) => {
                         setDiscountType(value);
-                        if (value === "none") {
-                          setDiscountValue("");
-                        }
+                        if (value === "none") setDiscountValue("");
                       }}
                     >
                       <SelectTrigger className="w-32">
@@ -1176,6 +1628,13 @@ export default function SalesEntry() {
                       ? "Partial"
                       : "Credit"}
                   </Badge>
+                </div>
+
+                <div className="flex justify-between text-sm">
+                  <span>Payment Mode:</span>
+                  <span className="capitalize">
+                    {paymentMode.replace("_", " ")}
+                  </span>
                 </div>
 
                 {(paymentType === "partial" || paymentType === "credit") &&
