@@ -11,7 +11,6 @@ import {
   DollarSign,
   FileText,
   Clock,
-  Home,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -95,42 +94,9 @@ export default function DashboardPage() {
     },
   ];
 
-  const bottomNavActions = [
-    {
-      title: "Dashboard",
-      icon: Home,
-      href: "/dashboard",
-      color: "text-gray-600",
-    },
-    {
-      title: "Customers",
-      icon: Users,
-      href: "/customers",
-      color: "text-gray-600",
-    },
-    {
-      title: "Sales",
-      icon: ShoppingCart,
-      href: "/sales",
-      color: "text-gray-600",
-    },
-    {
-      title: "Dues",
-      icon: DollarSign,
-      href: "/dues",
-      color: "text-gray-600",
-    },
-    {
-      title: "Reports",
-      icon: FileText,
-      href: "/reports",
-      color: "text-gray-600",
-    },
-  ];
-
   if (isLoading) {
     return (
-      <div className="space-y-6 pb-20">
+      <div className="space-y-6 pb-20 md:pb-6">
         {" "}
         {/* Added padding for bottom nav */}
         <div className="animate-pulse">
@@ -227,23 +193,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-      {/* Mobile Bottom Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-50">
-        <div className="flex justify-around items-center py-2">
-          {bottomNavActions.map((action, index) => (
-            <Link
-              key={index}
-              href={action.href}
-              className="flex flex-col items-center justify-center p-2 min-w-0 flex-1"
-            >
-              <action.icon className={`h-5 w-5 ${action.color} mb-1`} />
-              <span className="text-xs text-gray-600 text-center truncate w-full">
-                {action.title}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </div>
+      {/* OLD BOTTOM NAVIGATION REMOVED FROM HERE */}
     </div>
   );
 }

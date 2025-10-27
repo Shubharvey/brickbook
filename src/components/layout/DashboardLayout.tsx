@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Menu, X, Truck, Bell } from "lucide-react";
+import { Menu, Truck, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./Sidebar";
+import BottomNavigation from "./BottomNavigation"; // ADD THIS IMPORT
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -64,11 +65,6 @@ export default function DashboardLayout({
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Helper function to handle hover effects only on non-touch devices
-  const getHoverClasses = (baseClasses: string, hoverClasses: string) => {
-    return `${baseClasses} hover:${hoverClasses}`;
   };
 
   return (
@@ -164,10 +160,13 @@ export default function DashboardLayout({
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-auto">
+        {/* Page content - ADD BOTTOM PADDING FOR MOBILE */}
+        <main className="flex-1 overflow-auto pb-20 lg:pb-0">
           <div className="p-4 lg:p-6">{children}</div>
         </main>
+
+        {/* ADD BOTTOM NAVIGATION HERE */}
+        <BottomNavigation />
       </div>
     </div>
   );
