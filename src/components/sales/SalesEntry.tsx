@@ -21,11 +21,12 @@ import {
   Save,
   ShoppingCart,
   DollarSign,
-  Receipt,
+  Receipt, // FIXED: Added missing icon
   Search,
   Printer,
   Truck,
   User,
+  X, // FIXED: Added X icon for clear button
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -146,8 +147,9 @@ export default function SalesEntry() {
   const [paymentReference, setPaymentReference] = useState("");
   const [bankTransactionId, setBankTransactionId] = useState("");
 
-  // ---------- FIX: ref to dropdown wrapper so outside clicks can be detected ----------
-  const dropdownRef = useRef<HTMLDivElement | null>(null);
+  // FIXED: Better ref management for dropdown
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (token) {
@@ -173,6 +175,7 @@ export default function SalesEntry() {
 
   const fetchCustomers = async () => {
     try {
+      setIsLoading(true);
       const response = await fetch("/api/customers", {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -182,9 +185,13 @@ export default function SalesEntry() {
       if (response.ok) {
         const data = await response.json();
         setCustomers(data);
+      } else {
+        console.error("Failed to fetch customers");
       }
     } catch (error) {
       console.error("Failed to fetch customers:", error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -199,23 +206,31 @@ export default function SalesEntry() {
     );
   }, [customers, customerSearch]);
 
+  // FIXED: Improved customer selection logic
   const handleCustomerSelect = (customerId: string) => {
-    setSelectedCustomer(customerId);
-    setShowCustomerDropdown(false);
-    const selectedCustomerData = customers.find((c) => c.id === customerId);
-    if (selectedCustomerData) {
-      setCustomerSearch(selectedCustomerData.name);
+    const customer = customers.find((c) => c.id === customerId);
+    if (customer) {
+      setSelectedCustomer(customerId);
+      setCustomerSearch(customer.name);
+      setShowCustomerDropdown(false);
 
       // Auto-fill delivery address with customer's address
       if (!useDifferentDeliveryAddress) {
         setDeliveryAddress({
-          street: selectedCustomerData.street || "",
-          city: selectedCustomerData.city || "",
-          district: selectedCustomerData.district || "",
-          pincode: selectedCustomerData.pincode || "",
+          street: customer.street || "",
+          city: customer.city || "",
+          district: customer.district || "",
+          pincode: customer.pincode || "",
         });
       }
     }
+  };
+
+  // FIXED: Clear customer selection
+  const clearCustomerSelection = () => {
+    setSelectedCustomer("");
+    setCustomerSearch("");
+    setShowCustomerDropdown(false);
   };
 
   const handleCreateCustomer = async () => {
@@ -254,6 +269,7 @@ export default function SalesEntry() {
         const createdCustomer = await response.json();
         setCustomers([...customers, createdCustomer]);
         setSelectedCustomer(createdCustomer.id);
+        setCustomerSearch(createdCustomer.name);
         setNewCustomer({
           name: "",
           phone: "",
@@ -267,10 +283,10 @@ export default function SalesEntry() {
         });
         setShowNewCustomerForm(false);
         setShowCustomerDropdown(false);
-        setCustomerSearch("");
         alert("Customer created successfully!");
       } else {
-        alert("Failed to create customer");
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to create customer");
       }
     } catch (error) {
       console.error("Failed to create customer:", error);
@@ -344,35 +360,46 @@ export default function SalesEntry() {
     return Math.max(0, grandTotal - paid);
   };
 
+  // FIXED: Improved form validation
   const validateForm = () => {
     const newErrors: typeof errors = {};
-    if (!selectedCustomer) newErrors.customer = "Please select a customer";
+
+    if (!selectedCustomer) {
+      newErrors.customer = "Please select a customer";
+    }
+
     const hasInvalidItems = items.some((item) => !item.name || item.price <= 0);
-    if (hasInvalidItems)
+    if (hasInvalidItems) {
       newErrors.items = "Please fill all item details with valid prices";
+    }
+
     if ((paymentType === "credit" || paymentType === "partial") && !dueDate) {
       newErrors.dueDate = "Due date is required for credit/partial payments";
     }
+
     if (
       paymentType === "partial" &&
       (!paidAmount || parseFloat(paidAmount) <= 0)
     ) {
       newErrors.payment = "Paid amount is required for partial payments";
     }
+
+    // Validate payment reference for non-cash payments
+    if (paymentMode !== "cash" && !paymentReference && !bankTransactionId) {
+      newErrors.payment = "Payment reference is required for non-cash payments";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handlePrintBill = () => {
-    if (
-      !selectedCustomer ||
-      items.some((item) => !item.name || item.price <= 0)
-    ) {
+    if (!validateForm()) {
       alert("Please complete the sale details before printing");
       return;
     }
 
-    // compute totals for print output
+    // Compute totals for print output
     const subtotal = calculateTotal();
     const discountAmount = calculateDiscount();
     const grandTotal = calculateGrandTotal();
@@ -559,12 +586,14 @@ export default function SalesEntry() {
 
       const saleData = {
         customerId: selectedCustomer,
-        items: items.map((item) => ({
-          name: item.name,
-          quantity: item.quantity,
-          price: item.price,
-          total: item.total,
-        })),
+        items: items
+          .filter((item) => item.name)
+          .map((item) => ({
+            name: item.name,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.total,
+          })),
         subtotal,
         discountType: discountType === "none" ? null : discountType,
         discountValue:
@@ -621,7 +650,8 @@ export default function SalesEntry() {
         setBankTransactionId("");
         alert("Sale saved successfully!");
       } else {
-        alert("Failed to save sale");
+        const errorData = await response.json();
+        alert(errorData.error || "Failed to save sale");
       }
     } catch (error) {
       console.error("Failed to save sale:", error);
@@ -666,6 +696,7 @@ export default function SalesEntry() {
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
+                      ref={searchInputRef}
                       id="customer-search"
                       placeholder="Type customer name or phone number..."
                       value={customerSearch}
@@ -673,14 +704,7 @@ export default function SalesEntry() {
                         const value = e.target.value;
                         setCustomerSearch(value);
                         setShowCustomerDropdown(true);
-                        if (
-                          value === "" ||
-                          (selectedCustomer &&
-                            !customers
-                              .find((c) => c.id === selectedCustomer)
-                              ?.name.toLowerCase()
-                              .includes(value.toLowerCase()))
-                        ) {
+                        if (!value) {
                           setSelectedCustomer("");
                         }
                       }}
@@ -692,14 +716,10 @@ export default function SalesEntry() {
                     {customerSearch && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setCustomerSearch("");
-                          setSelectedCustomer("");
-                          setShowCustomerDropdown(false);
-                        }}
+                        onClick={clearCustomerSelection}
                         className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                       >
-                        ×
+                        <X className="h-4 w-4" /> {/* FIXED: Using X icon */}
                       </button>
                     )}
                   </div>
@@ -998,11 +1018,13 @@ export default function SalesEntry() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => {
-                        setSelectedCustomer("");
-                        setCustomerSearch("");
+                      onClick={(e) => {
+                        e.preventDefault(); // FIXED: Prevent any form submission
+                        e.stopPropagation(); // FIXED: Prevent event bubbling
+                        removeItem(item.id);
                       }}
-                      className="text-red-600 hover:text-red-800"
+                      disabled={items.length === 1}
+                      className="mt-6 text-red-600 hover:text-red-800 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -1012,7 +1034,7 @@ export default function SalesEntry() {
             </CardContent>
           </Card>
 
-          {/* Items Section - UPDATED: Removed custom input field */}
+          {/* Items Section - FIXED: Quantity now has full typing freedom */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -1033,9 +1055,7 @@ export default function SalesEntry() {
                   className="flex items-center gap-2 p-3 border rounded-lg bg-white"
                 >
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {" "}
-                    {/* Changed gap from 2 to 4 */}
-                    {/* Item Name - Full width */}
+                    {/* Item Name */}
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">
                         Item Name{" "}
@@ -1064,36 +1084,26 @@ export default function SalesEntry() {
                         </p>
                       )}
                     </div>
-                    {/* Quantity - UPDATED: Better placeholder with 30% opacity */}
+
+                    {/* Quantity - FIXED: Simple and free typing like price field */}
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">Quantity</Label>
                       <Input
                         type="number"
-                        placeholder="e.g., 1000"
                         min="1"
-                        value={item.quantity === 1 ? "" : item.quantity}
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          // Allow empty for easy typing
-                          if (value === "") {
-                            updateItem(item.id, "quantity", 1);
-                          } else {
-                            const numValue = parseInt(value);
-                            // Only accept positive numbers
-                            if (!isNaN(numValue) && numValue > 0) {
-                              updateItem(item.id, "quantity", numValue);
-                            }
-                          }
-                        }}
-                        onBlur={(e) => {
-                          // Set to 1 if empty or invalid
-                          if (!e.target.value || parseInt(e.target.value) < 1) {
-                            updateItem(item.id, "quantity", 1);
-                          }
-                        }}
-                        className="text-center placeholder:opacity-30"
+                        placeholder="0"
+                        value={item.quantity || ""}
+                        onChange={(e) =>
+                          updateItem(
+                            item.id,
+                            "quantity",
+                            parseInt(e.target.value) || 0
+                          )
+                        }
+                        className="text-center"
                       />
                     </div>
+
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">
                         Price{" "}
@@ -1121,6 +1131,7 @@ export default function SalesEntry() {
                         </p>
                       )}
                     </div>
+
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">Total</Label>
                       <Input
@@ -1131,10 +1142,15 @@ export default function SalesEntry() {
                     </div>
                   </div>
 
+                  {/* Delete Button - FIXED: Now working properly */}
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => removeItem(item.id)}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      removeItem(item.id);
+                    }}
                     disabled={items.length === 1}
                     className="mt-6 text-red-600 hover:text-red-800 hover:bg-red-50"
                   >
@@ -1151,7 +1167,7 @@ export default function SalesEntry() {
             </CardContent>
           </Card>
 
-          {/* NEW: Delivery Management Section */}
+          {/* Delivery Management Section */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
@@ -1252,8 +1268,18 @@ export default function SalesEntry() {
                     type="date"
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    min={new Date().toISOString().split("T")[0]}
+                    // Allow any date when in back date mode, otherwise restrict to today and future dates
+                    min={
+                      isBackDate
+                        ? undefined
+                        : new Date().toISOString().split("T")[0]
+                    }
                   />
+                  <p className="text-xs text-gray-500">
+                    {isBackDate
+                      ? "Back date mode: Can select past delivery dates"
+                      : "Normal mode: Can only select today or future delivery dates"}
+                  </p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="delivery-status">Delivery Status</Label>
