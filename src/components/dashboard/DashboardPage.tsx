@@ -11,6 +11,7 @@ import {
   DollarSign,
   FileText,
   Clock,
+  Home,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
@@ -94,14 +95,49 @@ export default function DashboardPage() {
     },
   ];
 
+  const bottomNavActions = [
+    {
+      title: "Dashboard",
+      icon: Home,
+      href: "/dashboard",
+      color: "text-gray-600",
+    },
+    {
+      title: "Customers",
+      icon: Users,
+      href: "/customers",
+      color: "text-gray-600",
+    },
+    {
+      title: "Sales",
+      icon: ShoppingCart,
+      href: "/sales",
+      color: "text-gray-600",
+    },
+    {
+      title: "Dues",
+      icon: DollarSign,
+      href: "/dues",
+      color: "text-gray-600",
+    },
+    {
+      title: "Reports",
+      icon: FileText,
+      href: "/reports",
+      color: "text-gray-600",
+    },
+  ];
+
   if (isLoading) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-6 pb-20">
+        {" "}
+        {/* Added padding for bottom nav */}
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
+              <div key={i} className="h-24 bg-gray-200 rounded-lg"></div>
             ))}
           </div>
         </div>
@@ -110,22 +146,22 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-6">
+      {" "}
+      {/* Added padding for bottom nav */}
       {/* Welcome Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
           Welcome back, {user?.name || "User"}!
         </h1>
-        <p className="text-gray-600 mt-2">
+        <p className="text-gray-600 mt-2 text-sm md:text-base">
           Here's what's happening with your business today.
         </p>
       </div>
-
       {/* Dashboard Stats */}
       <DashboardStats stats={stats} />
-
-      {/* Quick Actions */}
-      <div>
+      {/* Quick Actions - Hidden on mobile, shown on desktop */}
+      <div className="hidden md:block">
         <h2 className="text-xl font-semibold text-gray-900 mb-4">
           Quick Actions
         </h2>
@@ -149,12 +185,11 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
-
       {/* Recent Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg md:text-xl">
               <Clock className="h-5 w-5 mr-2" />
               Recent Sales
             </CardTitle>
@@ -174,7 +209,7 @@ export default function DashboardPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center">
+            <CardTitle className="flex items-center text-lg md:text-xl">
               <DollarSign className="h-5 w-5 mr-2" />
               Pending Dues
             </CardTitle>
@@ -191,6 +226,23 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+      {/* Mobile Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-50">
+        <div className="flex justify-around items-center py-2">
+          {bottomNavActions.map((action, index) => (
+            <Link
+              key={index}
+              href={action.href}
+              className="flex flex-col items-center justify-center p-2 min-w-0 flex-1"
+            >
+              <action.icon className={`h-5 w-5 ${action.color} mb-1`} />
+              <span className="text-xs text-gray-600 text-center truncate w-full">
+                {action.title}
+              </span>
+            </Link>
+          ))}
+        </div>
       </div>
     </div>
   );

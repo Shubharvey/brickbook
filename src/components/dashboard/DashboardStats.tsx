@@ -94,20 +94,20 @@ export default function DashboardStats({ stats }: DashboardStatsProps) {
 
   return (
     <div className="space-y-6">
-      {/* Main Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* Main Stats Grid - 2 columns on mobile */}
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
         {statCards.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">
+          <Card key={index} className="min-h-[100px]">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
+              <CardTitle className="text-xs md:text-sm font-medium text-gray-600">
                 {stat.title}
               </CardTitle>
               <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                <stat.icon className={`h-3 w-3 md:h-4 md:w-4 ${stat.color}`} />
               </div>
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">
+            <CardContent className="p-4 pt-0">
+              <div className="text-lg md:text-2xl font-bold text-gray-900">
                 {stat.value}
               </div>
             </CardContent>
@@ -115,24 +115,26 @@ export default function DashboardStats({ stats }: DashboardStatsProps) {
         ))}
       </div>
 
-      {/* Today's Stats */}
+      {/* Today's Stats - 2 columns on mobile */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Today's Overview
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           {todayStats.map((stat, index) => (
-            <Card key={index}>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium text-gray-600">
+            <Card key={index} className="min-h-[100px]">
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
+                <CardTitle className="text-xs md:text-sm font-medium text-gray-600">
                   {stat.title}
                 </CardTitle>
                 <div className={`p-2 rounded-lg ${stat.bgColor}`}>
-                  <stat.icon className={`h-4 w-4 ${stat.color}`} />
+                  <stat.icon
+                    className={`h-3 w-3 md:h-4 md:w-4 ${stat.color}`}
+                  />
                 </div>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-gray-900">
+              <CardContent className="p-4 pt-0">
+                <div className="text-lg md:text-2xl font-bold text-gray-900">
                   {stat.value}
                 </div>
               </CardContent>
