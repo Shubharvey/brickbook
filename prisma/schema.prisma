@@ -56,12 +56,27 @@ model Sale {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   
+  // NEW DELIVERY FIELDS
+  deliveryStatus   String?   @default("pending") // "pending", "scheduled", "delivered", "partial"
+  deliveryAddress  Json?     // Store delivery address as JSON object
+  deliveryDate     DateTime?
+  saleDate         DateTime? @default(now()) // For back date entries
+  paymentMode      String?   @default("cash") // "cash", "upi", "bank_transfer", "cheque"
+  paymentReference String?
+  bankTransactionId String?
+  discountType     String?   // "none", "percentage", "fixed"
+  discountValue    Float?    @default(0)
+  discountAmount   Float?    @default(0)
+  deliveryNotes    String?
+  isBackDate       Boolean?  @default(false)
+  
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   payments    Payment[]
   
   @@index([userId])
   @@index([customerId])
+  @@index([deliveryStatus]) // Add index for better delivery queries
 }
 
 model Payment {

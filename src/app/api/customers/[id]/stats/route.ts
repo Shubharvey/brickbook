@@ -21,16 +21,14 @@ export async function GET(
 
     const customerId = params.id;
 
-    // Get customer's sales with payments
+    // Get customer's sales
     const sales = await db.sale.findMany({
       where: {
         customerId: customerId,
         userId: decoded.id,
       },
       orderBy: { createdAt: "desc" },
-      include: {
-        payments: true,
-      },
+      take: 10, // Get recent 10 purchases
     });
 
     // Calculate statistics
@@ -39,62 +37,30 @@ export async function GET(
     const totalPaid = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
     const dueAmount = totalAmount - totalPaid;
 
-    // Calculate paid, pending, and partial sales
-    const paidSales = sales.filter((sale) => sale.status === "paid");
-    const pendingSales = sales.filter((sale) => sale.status === "pending");
-    const partialSales = sales.filter((sale) => sale.status === "partial");
-
-    // Format recent purchases with detailed payment info
-    const recentPurchases = sales.map((sale) => {
-      const totalPayments = sale.payments.reduce(
-        (sum, payment) => sum + payment.amount,
-        0
-      );
-      return {
-        id: sale.id,
-        invoiceNo: sale.invoiceNo,
-        items: sale.items as any[],
-        totalAmount: sale.totalAmount,
-        paidAmount: totalPayments,
-        dueAmount: sale.totalAmount - totalPayments,
-        status: sale.status,
-        paymentType: sale.paymentType,
-        createdAt: sale.createdAt.toISOString(),
-        dueDate: sale.dueDate?.toISOString(),
-        notes: sale.notes,
-        payments: sale.payments.map((payment) => ({
-          id: payment.id,
-          amount: payment.amount,
-          method: payment.method,
-          notes: payment.notes,
-          createdAt: payment.createdAt.toISOString(),
-        })),
-      };
-    });
+    // Format recent purchases
+    const recentPurchases = sales.map((sale) => ({
+      id: sale.id,
+      invoiceNo: sale.invoiceNo,
+      items: sale.items as any[],
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount,
+      dueAmount: sale.dueAmount,
+      createdAt: sale.createdAt.toISOString(),
+    }));
 
     const stats = {
       totalSales,
       totalAmount,
-      totalPaid,
       dueAmount,
       purchaseCount: totalSales,
-      paidSalesCount: paidSales.length,
-      pendingSalesCount: pendingSales.length,
-      partialSalesCount: partialSales.length,
       recentPurchases,
-      summary: {
-        totalRevenue: totalAmount,
-        totalCollected: totalPaid,
-        totalPending: dueAmount,
-        averageSaleValue: totalSales > 0 ? totalAmount / totalSales : 0,
-      },
     };
 
     return NextResponse.json(stats);
   } catch (error: any) {
     console.error("Customer stats fetch error:", error);
     return NextResponse.json(
-      { error: "Failed to fetch customer statistics", details: error.message },
+      { error: "Failed to fetch customer statistics" },
       { status: 500 }
     );
   }

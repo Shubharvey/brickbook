@@ -57,6 +57,18 @@ export async function POST(request: NextRequest) {
       paymentType,
       dueDate,
       notes,
+      // DELIVERY FIELDS
+      deliveryStatus = "pending",
+      deliveryAddress,
+      deliveryDate,
+      isBackDate = false,
+      saleDate,
+      paymentMode = "cash",
+      paymentReference,
+      bankTransactionId,
+      discountType = "none",
+      discountValue = 0,
+      discountAmount = 0,
     } = body;
 
     if (!customerId || !items || !totalAmount) {
@@ -78,6 +90,10 @@ export async function POST(request: NextRequest) {
       status = "partial";
     }
 
+    // Use back date if provided, otherwise current date
+    const finalSaleDate =
+      isBackDate && saleDate ? new Date(saleDate) : new Date();
+
     const sale = await db.sale.create({
       data: {
         invoiceNo,
@@ -91,6 +107,19 @@ export async function POST(request: NextRequest) {
         status,
         dueDate: dueDate ? new Date(dueDate) : null,
         notes,
+        // DELIVERY DATA
+        deliveryStatus,
+        deliveryAddress,
+        deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
+        saleDate: finalSaleDate,
+        paymentMode,
+        paymentReference,
+        bankTransactionId,
+        discountType: discountType === "none" ? null : discountType,
+        discountValue,
+        discountAmount,
+        isBackDate,
+        deliveryNotes: notes,
       },
       include: {
         customer: true,

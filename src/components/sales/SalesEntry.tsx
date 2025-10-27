@@ -1032,8 +1032,10 @@ export default function SalesEntry() {
                   key={item.id}
                   className="flex items-center gap-2 p-3 border rounded-lg bg-white"
                 >
-                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-2">
-                    {/* Item Name - UPDATED: Full width without custom input */}
+                  <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {" "}
+                    {/* Changed gap from 2 to 4 */}
+                    {/* Item Name - Full width */}
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">
                         Item Name{" "}
@@ -1062,7 +1064,6 @@ export default function SalesEntry() {
                         </p>
                       )}
                     </div>
-
                     {/* Quantity - UPDATED: Better placeholder with 30% opacity */}
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">Quantity</Label>
@@ -1093,7 +1094,6 @@ export default function SalesEntry() {
                         className="text-center placeholder:opacity-30"
                       />
                     </div>
-
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">
                         Price{" "}
@@ -1121,7 +1121,6 @@ export default function SalesEntry() {
                         </p>
                       )}
                     </div>
-
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">Total</Label>
                       <Input
