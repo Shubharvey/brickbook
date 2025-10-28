@@ -28,7 +28,7 @@ export default function BottomNavigation() {
     {
       title: "Dashboard",
       icon: Home,
-      href: "/dashboard",
+      href: "/",
     },
     {
       title: "Customers",
@@ -53,8 +53,8 @@ export default function BottomNavigation() {
   ];
 
   const isActive = (href: string) => {
-    if (href === "/dashboard") {
-      return pathname === "/dashboard";
+    if (href === "/") {
+      return pathname === "/";
     }
     return pathname.startsWith(href);
   };

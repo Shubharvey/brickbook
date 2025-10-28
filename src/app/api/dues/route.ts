@@ -1,48 +1,61 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { verifyToken } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const authHeader = request.headers.get("authorization");
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    const decoded = verifyToken(token);
-
-    if (!decoded) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
-
+    // Fetch all sales that have due amounts
     const dues = await db.sale.findMany({
       where: {
-        userId: decoded.id,
-        OR: [{ status: "pending" }, { status: "partial" }],
+        dueAmount: {
+          gt: 0, // Only get sales with due amount greater than 0
+        },
       },
-      include: {
-        customer: true,
+      select: {
+        id: true, // This is the saleId
+        invoiceNo: true,
+        totalAmount: true,
+        paidAmount: true,
+        dueAmount: true,
+        status: true,
+        createdAt: true,
+        paymentType: true,
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+          },
+        },
       },
-      orderBy: { createdAt: "desc" },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
 
-    // Calculate days overdue for each due
-    const duesWithDays = dues.map((due) => {
-      const created = new Date(due.createdAt);
-      const now = new Date();
-      const diffTime = Math.abs(now.getTime() - created.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    // Transform the data to match the Due interface
+    const transformedDues = dues.map((sale) => ({
+      id: sale.id, // Use sale.id as the due ID
+      saleId: sale.id, // Make sure saleId is included
+      invoiceNo: sale.invoiceNo || `INV-${sale.id.slice(-6)}`,
+      customer: {
+        id: sale.customer.id,
+        name: sale.customer.name,
+        phone: sale.customer.phone,
+      },
+      totalAmount: sale.totalAmount,
+      paidAmount: sale.paidAmount,
+      dueAmount: sale.dueAmount,
+      status: sale.paymentType as "pending" | "partial" | "paid",
+      createdAt: sale.createdAt.toISOString(),
+      daysOverdue: Math.ceil(
+        (new Date().getTime() - sale.createdAt.getTime()) /
+          (1000 * 60 * 60 * 24)
+      ),
+    }));
 
-      return {
-        ...due,
-        daysOverdue: diffDays,
-      };
-    });
-
-    return NextResponse.json(duesWithDays);
-  } catch (error: any) {
-    console.error("Dues fetch error:", error);
+    return NextResponse.json(transformedDues);
+  } catch (error) {
+    console.error("Failed to fetch dues:", error);
     return NextResponse.json(
       { error: "Failed to fetch dues" },
       { status: 500 }
