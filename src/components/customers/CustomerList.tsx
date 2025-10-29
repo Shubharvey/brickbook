@@ -21,9 +21,19 @@ import {
   AlertCircle,
   Save,
   X,
+  Contact,
+  Smartphone,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface Customer {
   id: string;
@@ -32,6 +42,13 @@ interface Customer {
   email?: string;
   address?: string;
   createdAt: string;
+}
+
+interface ContactData {
+  name: string;
+  phones: string[];
+  emails: string[];
+  addresses: string[];
 }
 
 export default function CustomerList() {
@@ -57,6 +74,12 @@ export default function CustomerList() {
     address: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Contact import states
+  const [showImportDialog, setShowImportDialog] = useState(false);
+  const [selectedContacts, setSelectedContacts] = useState<ContactData[]>([]);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(0);
 
   useEffect(() => {
     if (token) {
@@ -250,7 +273,43 @@ export default function CustomerList() {
     }
   };
 
-  const handleImportContacts = () => {
+  // Enhanced contact import functionality
+  const handleImportContacts = async () => {
+    // Check if Web Contacts API is available
+    if (!("contacts" in navigator && "select" in navigator.contacts)) {
+      // Fallback to file import if Contacts API not available
+      handleFileImport();
+      return;
+    }
+
+    try {
+      setError(null);
+      const contacts = await (navigator as any).contacts.select(
+        ["name", "email", "tel", "address"],
+        { multiple: true }
+      );
+
+      if (contacts && contacts.length > 0) {
+        const formattedContacts: ContactData[] = contacts.map(
+          (contact: any) => ({
+            name: contact.name?.[0] || "Unknown Contact",
+            phones: contact.tel || [],
+            emails: contact.email || [],
+            addresses: contact.address?.[0] ? [contact.address[0]] : [],
+          })
+        );
+
+        setSelectedContacts(formattedContacts);
+        setShowImportDialog(true);
+      }
+    } catch (error) {
+      console.error("Error accessing contacts:", error);
+      // Fallback to file import
+      handleFileImport();
+    }
+  };
+
+  const handleFileImport = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".vcf,.csv,.json";
@@ -315,6 +374,78 @@ export default function CustomerList() {
       console.error("Failed to import contact:", error);
       return false;
     }
+  };
+
+  // Bulk import selected contacts
+  const handleBulkImport = async () => {
+    if (selectedContacts.length === 0) return;
+
+    setIsImporting(true);
+    setImportProgress(0);
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    for (let i = 0; i < selectedContacts.length; i++) {
+      const contact = selectedContacts[i];
+
+      // Skip if no name
+      if (!contact.name || contact.name === "Unknown Contact") {
+        skippedCount++;
+        continue;
+      }
+
+      // Check for duplicates
+      const isDuplicate = customers.some(
+        (customer) =>
+          customer.name.toLowerCase() === contact.name.toLowerCase() ||
+          (contact.phones[0] && customer.phone === contact.phones[0])
+      );
+
+      if (isDuplicate) {
+        skippedCount++;
+        continue;
+      }
+
+      try {
+        const response = await fetch("/api/customers", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            name: contact.name,
+            phone: contact.phones[0] || undefined,
+            email: contact.emails[0] || undefined,
+            address: contact.addresses[0] || undefined,
+          }),
+        });
+
+        if (response.ok) {
+          importedCount++;
+        } else {
+          skippedCount++;
+        }
+      } catch (error) {
+        console.error("Failed to import contact:", error);
+        skippedCount++;
+      }
+
+      setImportProgress(((i + 1) / selectedContacts.length) * 100);
+    }
+
+    setIsImporting(false);
+    setShowImportDialog(false);
+    setSelectedContacts([]);
+
+    await fetchCustomers();
+
+    let message = `Successfully imported ${importedCount} contacts`;
+    if (skippedCount > 0) {
+      message += ` (${skippedCount} skipped due to duplicates or errors)`;
+    }
+    setSuccess(message);
   };
 
   const filteredCustomers = customers.filter(
@@ -724,6 +855,79 @@ export default function CustomerList() {
           </div>
         )}
       </div>
+
+      {/* Contact Import Dialog */}
+      <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Contact className="h-5 w-5 text-blue-600" />
+              Import Contacts
+            </DialogTitle>
+            <DialogDescription>
+              Select contacts to import. Duplicates will be skipped
+              automatically.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-60 overflow-y-auto space-y-3">
+            {selectedContacts.map((contact, index) => (
+              <div
+                key={index}
+                className="flex items-center space-x-3 p-2 border rounded-lg"
+              >
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Contact className="h-4 w-4 text-blue-600" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{contact.name}</p>
+                  {contact.phones[0] && (
+                    <p className="text-xs text-gray-600 flex items-center gap-1">
+                      <Smartphone className="h-3 w-3" />
+                      {contact.phones[0]}
+                    </p>
+                  )}
+                  {contact.emails[0] && (
+                    <p className="text-xs text-gray-600 truncate">
+                      {contact.emails[0]}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowImportDialog(false);
+                setSelectedContacts([]);
+              }}
+              disabled={isImporting}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleBulkImport}
+              disabled={isImporting || selectedContacts.length === 0}
+              className="bg-blue-600 hover:bg-blue-700"
+            >
+              {isImporting ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Importing... ({Math.round(importProgress)}%)
+                </>
+              ) : (
+                <>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Import {selectedContacts.length} Contacts
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,17 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
+import { verifyToken } from "@/lib/auth"; // Add this import
 
 export async function GET(request: NextRequest) {
   try {
-    // Fetch all sales that have due amounts
+    // Add authentication check
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.substring(7);
+    const decoded = verifyToken(token);
+
+    if (!decoded) {
+      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+    }
+
+    const userId = decoded.id;
+
+    // Fetch all sales that have due amounts AND where customer exists AND belongs to user
     const dues = await db.sale.findMany({
       where: {
         dueAmount: {
           gt: 0, // Only get sales with due amount greater than 0
         },
+        userId: userId, // Only get sales for this user
+        customer: {
+          // Ensure customer exists and belongs to user
+          userId: userId,
+        },
       },
       select: {
-        id: true, // This is the saleId
+        id: true,
         invoiceNo: true,
         totalAmount: true,
         paidAmount: true,
@@ -34,8 +55,8 @@ export async function GET(request: NextRequest) {
 
     // Transform the data to match the Due interface
     const transformedDues = dues.map((sale) => ({
-      id: sale.id, // Use sale.id as the due ID
-      saleId: sale.id, // Make sure saleId is included
+      id: sale.id,
+      saleId: sale.id,
       invoiceNo: sale.invoiceNo || `INV-${sale.id.slice(-6)}`,
       customer: {
         id: sale.customer.id,
