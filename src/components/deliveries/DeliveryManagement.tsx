@@ -33,9 +33,13 @@ import {
   Calendar,
   Package,
   History,
+  Phone,
+  MapPin,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import Link from "next/link";
+import DeliveryCard from "./DeliveryCard";
+import StatusQuickActions from "./StatusQuickActions";
 
 interface Delivery {
   id: string;
@@ -74,6 +78,9 @@ export default function DeliveryManagement() {
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
+  const [activeView, setActiveView] = useState<
+    "active" | "upcoming" | "history"
+  >("active");
 
   // Load real deliveries data
   useEffect(() => {
@@ -123,7 +130,7 @@ export default function DeliveryManagement() {
         const data = await response.json();
         setDeliveries(data);
       } else {
-        setDeliveries([]); // Empty array if no data
+        setDeliveries([]);
       }
     } catch (error) {
       console.error("Failed to fetch deliveries:", error);
@@ -203,6 +210,10 @@ export default function DeliveryManagement() {
     }
   };
 
+  const handleCallCustomer = (phone: string) => {
+    window.open(`tel:${phone}`);
+  };
+
   const getStatusBadge = (status: Delivery["deliveryStatus"]) => {
     const statusConfig = {
       pending: { variant: "secondary" as const, text: "Pending", icon: Clock },
@@ -268,12 +279,20 @@ export default function DeliveryManagement() {
   // Recent delivered history (last 3 days)
   const recentDelivered = deliveries.filter((d) => {
     if (d.deliveryStatus !== "delivered") return false;
-    if (!d.deliveryDate) return false;
 
-    const deliveryDate = new Date(d.deliveryDate);
+    // Use sale date if delivery date is not available
+    const relevantDate = d.deliveryDate || d.saleDate;
+    if (!relevantDate) return false;
+
+    const deliveryDate = new Date(relevantDate);
     deliveryDate.setHours(0, 0, 0, 0);
     return deliveryDate >= threeDaysAgo && deliveryDate <= today;
   });
+
+  // For mobile view - show ALL delivered orders
+  const deliveredDeliveries = filteredDeliveries.filter(
+    (d) => d.deliveryStatus === "delivered"
+  );
 
   // Stats for header badges
   const pendingCount = deliveries.filter(
@@ -353,17 +372,50 @@ export default function DeliveryManagement() {
 
       {deliveries.length > 0 && (
         <>
-          {/* Filters */}
-          <Card>
-            <CardContent className="p-4">
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {/* Mobile Filters & Stats */}
+          <div className="block md:hidden">
+            <Card>
+              <CardContent className="p-4 space-y-4">
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Card className="bg-orange-50 border-orange-200">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-5 w-5 text-orange-600" />
+                        <div>
+                          <div className="text-sm text-orange-800">Pending</div>
+                          <div className="text-lg font-bold text-orange-900">
+                            {pendingCount}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-blue-50 border-blue-200">
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2">
+                        <Truck className="h-5 w-5 text-blue-600" />
+                        <div>
+                          <div className="text-sm text-blue-800">Scheduled</div>
+                          <div className="text-lg font-bold text-blue-900">
+                            {scheduledCount}
+                          </div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Search */}
                 <div className="space-y-2">
-                  <Label htmlFor="search">Search</Label>
+                  <Label htmlFor="search-mobile" className="text-sm">
+                    Search Deliveries
+                  </Label>
                   <div className="relative">
                     <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
                     <Input
-                      id="search"
-                      placeholder="Search customer or items..."
+                      id="search-mobile"
+                      placeholder="Customer, items, phone..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       className="pl-10"
@@ -371,8 +423,11 @@ export default function DeliveryManagement() {
                   </div>
                 </div>
 
+                {/* Status Filter */}
                 <div className="space-y-2">
-                  <Label htmlFor="status">Status</Label>
+                  <Label htmlFor="status-mobile" className="text-sm">
+                    Filter by Status
+                  </Label>
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger>
                       <SelectValue placeholder="All Status" />
@@ -387,284 +442,456 @@ export default function DeliveryManagement() {
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="date">Delivery Date</Label>
-                  <div className="relative">
-                    <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                    <Input
-                      id="date"
-                      type="date"
-                      value={selectedDate}
-                      onChange={(e) => setSelectedDate(e.target.value)}
-                      className="pl-10"
-                    />
-                  </div>
+                {/* View Toggle */}
+                <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                  <Button
+                    variant={activeView === "active" ? "default" : "ghost"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setActiveView("active")}
+                  >
+                    Active
+                  </Button>
+                  <Button
+                    variant={activeView === "upcoming" ? "default" : "ghost"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setActiveView("upcoming")}
+                  >
+                    Upcoming
+                  </Button>
+                  <Button
+                    variant={activeView === "history" ? "default" : "ghost"}
+                    size="sm"
+                    className="flex-1"
+                    onClick={() => setActiveView("history")}
+                  >
+                    History
+                  </Button>
                 </div>
-
-                <div className="space-y-2">
-                  <Label>Quick Stats</Label>
-                  <div className="flex gap-2 text-sm">
-                    <Badge variant="secondary">{pendingCount} Pending</Badge>
-                    <Badge>{scheduledCount} Scheduled</Badge>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Upcoming Deliveries Section - Only future dates (not today) */}
-          {upcomingDeliveries.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Calendar className="h-5 w-5" />
-                  Upcoming Deliveries (Future Dates)
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Delivery Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {upcomingDeliveries.map((delivery) => (
-                      <TableRow key={delivery.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">
-                              {delivery.customerName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {delivery.customerPhone}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {delivery.items.map((item, index) => (
-                              <div key={index}>
-                                {item.name} × {item.quantity}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {delivery.deliveryDate
-                            ? new Date(
-                                delivery.deliveryDate
-                              ).toLocaleDateString()
-                            : "Not set"}
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(delivery.deliveryStatus)}
-                        </TableCell>
-                        <TableCell>
-                          <Select
-                            value={delivery.deliveryStatus}
-                            onValueChange={(
-                              value: Delivery["deliveryStatus"]
-                            ) => updateDeliveryStatus(delivery.id, value)}
-                          >
-                            <SelectTrigger className="w-32">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="pending">Pending</SelectItem>
-                              <SelectItem value="scheduled">
-                                Scheduled
-                              </SelectItem>
-                              <SelectItem value="delivered">
-                                Delivered
-                              </SelectItem>
-                              <SelectItem value="partial">Partial</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
               </CardContent>
             </Card>
-          )}
+          </div>
 
-          {/* Active Deliveries - All non-delivered orders */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Truck className="h-5 w-5" />
-                Active Deliveries ({activeDeliveries.length})
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {activeDeliveries.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-300" />
-                  <p>No active deliveries - all orders are delivered!</p>
+          {/* Desktop Filters */}
+          <div className="hidden md:block">
+            <Card>
+              <CardContent className="p-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="search">Search</Label>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="search"
+                        placeholder="Search customer or items..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="status">Status</Label>
+                    <Select
+                      value={statusFilter}
+                      onValueChange={setStatusFilter}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="pending">Pending</SelectItem>
+                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                        <SelectItem value="delivered">Delivered</SelectItem>
+                        <SelectItem value="partial">Partial</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="date">Delivery Date</Label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                      <Input
+                        id="date"
+                        type="date"
+                        value={selectedDate}
+                        onChange={(e) => setSelectedDate(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Quick Stats</Label>
+                    <div className="flex gap-2 text-sm">
+                      <Badge variant="secondary">{pendingCount} Pending</Badge>
+                      <Badge>{scheduledCount} Scheduled</Badge>
+                    </div>
+                  </div>
                 </div>
-              ) : (
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Delivery Date</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Mobile View */}
+          <div className="block md:hidden">
+            {/* Active Deliveries */}
+            {activeView === "active" && (
+              <>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Truck className="h-5 w-5 text-blue-600" />
+                    Active Deliveries ({activeDeliveries.length})
+                  </h2>
+                </div>
+
+                {activeDeliveries.length === 0 ? (
+                  <Card>
+                    <CardContent className="text-center py-8">
+                      <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-300" />
+                      <p className="text-gray-500">
+                        No active deliveries found
+                      </p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
                     {activeDeliveries.map((delivery) => (
-                      <TableRow key={delivery.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">
-                              {delivery.customerName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {delivery.customerPhone}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {delivery.deliveryAddress ? (
-                            <div className="text-sm">
-                              <div>{delivery.deliveryAddress.street}</div>
-                              <div>
-                                {delivery.deliveryAddress.city},{" "}
-                                {delivery.deliveryAddress.district}
-                              </div>
-                              <div>{delivery.deliveryAddress.pincode}</div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-400">No address</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {delivery.items.map((item, index) => (
-                              <div key={index}>
-                                {item.name} × {item.quantity}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          ₹{delivery.totalAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          {delivery.deliveryDate
-                            ? new Date(
-                                delivery.deliveryDate
-                              ).toLocaleDateString()
-                            : "Not set"}
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(delivery.deliveryStatus)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Select
-                              value={delivery.deliveryStatus}
-                              onValueChange={(
-                                value: Delivery["deliveryStatus"]
-                              ) => updateDeliveryStatus(delivery.id, value)}
-                            >
-                              <SelectTrigger className="w-32">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="pending">Pending</SelectItem>
-                                <SelectItem value="scheduled">
-                                  Scheduled
-                                </SelectItem>
-                                <SelectItem value="delivered">
-                                  Delivered
-                                </SelectItem>
-                                <SelectItem value="partial">Partial</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </TableCell>
-                      </TableRow>
+                      <DeliveryCard
+                        key={delivery.id}
+                        delivery={delivery}
+                        onStatusUpdate={updateDeliveryStatus}
+                        onCallCustomer={handleCallCustomer}
+                      />
                     ))}
-                  </TableBody>
-                </Table>
-              )}
-            </CardContent>
-          </Card>
+                  </div>
+                )}
+              </>
+            )}
 
-          {/* Recent Delivery History (Last 3 Days) */}
-          {recentDelivered.length > 0 && (
+            {/* Upcoming Deliveries */}
+            {activeView === "upcoming" && (
+              <>
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <Calendar className="h-5 w-5 text-purple-600" />
+                  Upcoming Deliveries ({upcomingDeliveries.length})
+                </h2>
+
+                {upcomingDeliveries.length === 0 ? (
+                  <Card>
+                    <CardContent className="text-center py-8">
+                      <Calendar className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-gray-500">No upcoming deliveries</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {upcomingDeliveries.map((delivery) => (
+                      <DeliveryCard
+                        key={delivery.id}
+                        delivery={delivery}
+                        onStatusUpdate={updateDeliveryStatus}
+                        onCallCustomer={handleCallCustomer}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Delivery History */}
+            {activeView === "history" && (
+              <>
+                <h2 className="text-lg font-semibold flex items-center gap-2 mb-4">
+                  <History className="h-5 w-5 text-gray-600" />
+                  Delivery History ({deliveredDeliveries.length})
+                </h2>
+
+                {deliveredDeliveries.length === 0 ? (
+                  <Card>
+                    <CardContent className="text-center py-8">
+                      <History className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                      <p className="text-gray-500">No delivery history</p>
+                    </CardContent>
+                  </Card>
+                ) : (
+                  <div className="space-y-4">
+                    {deliveredDeliveries.map((delivery) => (
+                      <DeliveryCard
+                        key={delivery.id}
+                        delivery={delivery}
+                        onStatusUpdate={updateDeliveryStatus}
+                        onCallCustomer={handleCallCustomer}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Desktop View - Tables */}
+          <div className="hidden md:block">
+            {/* Upcoming Deliveries Section - Only future dates (not today) */}
+            {upcomingDeliveries.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Calendar className="h-5 w-5" />
+                    Upcoming Deliveries (Future Dates)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Delivery Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {upcomingDeliveries.map((delivery) => (
+                        <TableRow key={delivery.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {delivery.customerName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {delivery.customerPhone}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {delivery.items.map((item, index) => (
+                                <div key={index}>
+                                  {item.name} × {item.quantity}
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {delivery.deliveryDate
+                              ? new Date(
+                                  delivery.deliveryDate
+                                ).toLocaleDateString()
+                              : "Not set"}
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(delivery.deliveryStatus)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleCallCustomer(delivery.customerPhone)
+                                }
+                              >
+                                <Phone className="h-4 w-4" />
+                              </Button>
+                              <StatusQuickActions
+                                delivery={delivery}
+                                onStatusUpdate={updateDeliveryStatus}
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Active Deliveries - All non-delivered orders */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Recent Delivery History (Last 3 Days)
+                  <Truck className="h-5 w-5" />
+                  Active Deliveries ({activeDeliveries.length})
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Customer</TableHead>
-                      <TableHead>Items</TableHead>
-                      <TableHead>Delivery Date</TableHead>
-                      <TableHead>Amount</TableHead>
-                      <TableHead>Status</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {recentDelivered.map((delivery) => (
-                      <TableRow key={delivery.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">
-                              {delivery.customerName}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              {delivery.customerPhone}
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="text-sm">
-                            {delivery.items.map((item, index) => (
-                              <div key={index}>
-                                {item.name} × {item.quantity}
-                              </div>
-                            ))}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          {delivery.deliveryDate
-                            ? new Date(
-                                delivery.deliveryDate
-                              ).toLocaleDateString()
-                            : "Not set"}
-                        </TableCell>
-                        <TableCell className="font-medium">
-                          ₹{delivery.totalAmount.toFixed(2)}
-                        </TableCell>
-                        <TableCell>
-                          {getStatusBadge(delivery.deliveryStatus)}
-                        </TableCell>
+                {activeDeliveries.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">
+                    <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-300" />
+                    <p>No active deliveries - all orders are delivered!</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Address</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Delivery Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {activeDeliveries.map((delivery) => (
+                        <TableRow key={delivery.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {delivery.customerName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {delivery.customerPhone}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {delivery.deliveryAddress ? (
+                              <div className="text-sm">
+                                <div>{delivery.deliveryAddress.street}</div>
+                                <div>
+                                  {delivery.deliveryAddress.city},{" "}
+                                  {delivery.deliveryAddress.district}
+                                </div>
+                                <div>{delivery.deliveryAddress.pincode}</div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">No address</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {delivery.items.map((item, index) => (
+                                <div key={index}>
+                                  {item.name} × {item.quantity}
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            ₹{delivery.totalAmount.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {delivery.deliveryDate
+                              ? new Date(
+                                  delivery.deliveryDate
+                                ).toLocaleDateString()
+                              : "Not set"}
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(delivery.deliveryStatus)}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() =>
+                                  handleCallCustomer(delivery.customerPhone)
+                                }
+                              >
+                                <Phone className="h-4 w-4" />
+                              </Button>
+                              <StatusQuickActions
+                                delivery={delivery}
+                                onStatusUpdate={updateDeliveryStatus}
+                                compact
+                              />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
               </CardContent>
             </Card>
-          )}
+
+            {/* Recent Delivery History (Last 3 Days) */}
+            {recentDelivered.length > 0 && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" />
+                    Recent Delivery History (Last 3 Days)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Items</TableHead>
+                        <TableHead>Delivery Date</TableHead>
+                        <TableHead>Amount</TableHead>
+                        <TableHead>Status</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {recentDelivered.map((delivery) => (
+                        <TableRow key={delivery.id}>
+                          <TableCell>
+                            <div>
+                              <div className="font-medium">
+                                {delivery.customerName}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                {delivery.customerPhone}
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {delivery.items.map((item, index) => (
+                                <div key={index}>
+                                  {item.name} × {item.quantity}
+                                </div>
+                              ))}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {delivery.deliveryDate
+                              ? new Date(
+                                  delivery.deliveryDate
+                                ).toLocaleDateString()
+                              : "Not set"}
+                          </TableCell>
+                          <TableCell className="font-medium">
+                            ₹{delivery.totalAmount.toFixed(2)}
+                          </TableCell>
+                          <TableCell>
+                            {getStatusBadge(delivery.deliveryStatus)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </CardContent>
+              </Card>
+            )}
+          </div>
         </>
+      )}
+
+      {/* Floating Action Button for Mobile */}
+      {deliveries.length > 0 && (
+        <div className="fixed bottom-20 right-4 z-10 md:hidden">
+          <Button
+            size="lg"
+            className="rounded-full w-14 h-14 shadow-lg bg-blue-600 hover:bg-blue-700"
+            onClick={fetchDeliveries}
+          >
+            <RefreshCw className="h-6 w-6" />
+          </Button>
+        </div>
       )}
     </div>
   );

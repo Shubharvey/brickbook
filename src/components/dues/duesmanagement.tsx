@@ -16,6 +16,8 @@ import {
   CheckCircle,
   X,
   Receipt,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -33,6 +35,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 
 interface Due {
   id: string;
@@ -51,14 +59,27 @@ interface Due {
   saleId: string;
 }
 
+interface CustomerDue {
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  totalDueAmount: number;
+  totalOverallAmount: number;
+  totalPaidAmount: number;
+  dues: Due[];
+  isExpanded: boolean;
+}
+
 export default function DuesManagement() {
   const { token } = useAuth();
   const [dues, setDues] = useState<Due[]>([]);
+  const [groupedDues, setGroupedDues] = useState<CustomerDue[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<
     "all" | "pending" | "partial"
   >("all");
+  const [expandedCustomers, setExpandedCustomers] = useState<string[]>([]);
 
   // Payment recording state
   const [selectedDue, setSelectedDue] = useState<Due | null>(null);
@@ -76,6 +97,39 @@ export default function DuesManagement() {
       fetchDues();
     }
   }, [token]);
+
+  useEffect(() => {
+    // Group dues by customer whenever dues change
+    const grouped = groupDuesByCustomer(dues);
+    setGroupedDues(grouped);
+  }, [dues]);
+
+  const groupDuesByCustomer = (duesList: Due[]): CustomerDue[] => {
+    const customerMap = new Map<string, CustomerDue>();
+
+    duesList.forEach((due) => {
+      if (!customerMap.has(due.customer.id)) {
+        customerMap.set(due.customer.id, {
+          customerId: due.customer.id,
+          customerName: due.customer.name,
+          customerPhone: due.customer.phone,
+          totalDueAmount: 0,
+          totalOverallAmount: 0,
+          totalPaidAmount: 0,
+          dues: [],
+          isExpanded: false,
+        });
+      }
+
+      const customerDue = customerMap.get(due.customer.id)!;
+      customerDue.dues.push(due);
+      customerDue.totalDueAmount += due.dueAmount;
+      customerDue.totalOverallAmount += due.totalAmount;
+      customerDue.totalPaidAmount += due.paidAmount;
+    });
+
+    return Array.from(customerMap.values());
+  };
 
   const fetchDues = async () => {
     try {
@@ -96,12 +150,18 @@ export default function DuesManagement() {
     }
   };
 
-  const filteredDues = dues.filter((due) => {
-    const matchesSearch =
-      due.customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      due.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filterStatus === "all" || due.status === filterStatus;
-    return matchesSearch && matchesFilter;
+  const filteredGroupedDues = groupedDues.filter((customerDue) => {
+    const matchesSearch = customerDue.customerName
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+
+    if (filterStatus === "all") return matchesSearch;
+
+    // For status filtering, check if any due matches the status
+    const hasMatchingStatus = customerDue.dues.some(
+      (due) => due.status === filterStatus
+    );
+    return matchesSearch && hasMatchingStatus;
   });
 
   const calculateDaysOverdue = (createdAt: string) => {
@@ -164,17 +224,16 @@ export default function DuesManagement() {
     setIsProcessing(true);
 
     try {
-      // Updated payment data to match backend expectations
       const paymentData = {
         saleId: selectedDue.saleId,
-        customerId: selectedDue.customer.id, // Added customerId
+        customerId: selectedDue.customer.id,
         amount: paymentAmountNum,
-        method: paymentMode, // Using 'method' instead of 'paymentMode'
+        method: paymentMode,
         referenceNumber: referenceNumber || undefined,
         notes: paymentNotes || undefined,
       };
 
-      console.log("Sending payment data:", paymentData); // For debugging
+      console.log("Sending payment data:", paymentData);
 
       const response = await fetch("/api/payments", {
         method: "POST",
@@ -188,11 +247,8 @@ export default function DuesManagement() {
       const responseData = await response.json();
 
       if (response.ok) {
-        // Refresh the dues list
         await fetchDues();
         closePaymentDialog();
-
-        // Show success message
         alert(
           `Payment of ₹${paymentAmountNum.toLocaleString(
             "en-IN"
@@ -237,8 +293,20 @@ export default function DuesManagement() {
     }
   };
 
-  const totalDues = filteredDues.reduce((sum, due) => sum + due.dueAmount, 0);
-  const overdueCount = filteredDues.filter(
+  const toggleCustomerExpansion = (customerId: string) => {
+    setExpandedCustomers((prev) =>
+      prev.includes(customerId)
+        ? prev.filter((id) => id !== customerId)
+        : [...prev, customerId]
+    );
+  };
+
+  const totalDues = filteredGroupedDues.reduce(
+    (sum, customer) => sum + customer.totalDueAmount,
+    0
+  );
+  const totalCustomers = filteredGroupedDues.length;
+  const overdueCount = dues.filter(
     (due) => calculateDaysOverdue(due.createdAt) > 7
   ).length;
 
@@ -271,7 +339,7 @@ export default function DuesManagement() {
         </div>
       </div>
 
-      {/* Stats Cards - 2 columns on mobile */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
         <Card className="min-h-[100px]">
           <CardContent className="p-4">
@@ -311,7 +379,7 @@ export default function DuesManagement() {
                   Customers with Dues
                 </p>
                 <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {filteredDues.length}
+                  {totalCustomers}
                 </p>
               </div>
             </div>
@@ -319,12 +387,12 @@ export default function DuesManagement() {
         </Card>
       </div>
 
-      {/* Filters - Stack on mobile */}
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
           <Input
-            placeholder="Search by customer name or invoice..."
+            placeholder="Search by customer name..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="pl-10"
@@ -358,9 +426,9 @@ export default function DuesManagement() {
         </div>
       </div>
 
-      {/* Dues List */}
+      {/* Grouped Dues List */}
       <div className="space-y-4">
-        {filteredDues.length === 0 ? (
+        {filteredGroupedDues.length === 0 ? (
           <Card>
             <CardContent className="text-center py-12">
               <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
@@ -375,116 +443,162 @@ export default function DuesManagement() {
             </CardContent>
           </Card>
         ) : (
-          filteredDues.map((due) => {
-            const daysOverdue = calculateDaysOverdue(due.createdAt);
-            return (
-              <Card key={due.id} className="hover:shadow-md transition-shadow">
-                <CardContent className="p-4 md:p-6">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      {/* Customer Name and Status - Stack on mobile */}
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-                        <h3 className="text-lg font-semibold text-gray-900 break-words">
-                          {due.customer.name}
-                        </h3>
-                        <div className="flex flex-wrap gap-2">
-                          <Badge
-                            className={`text-xs ${getStatusColor(due.status)}`}
-                          >
-                            {due.status}
-                          </Badge>
-                          {daysOverdue > 7 && (
-                            <Badge variant="destructive" className="text-xs">
-                              {daysOverdue}d overdue
-                            </Badge>
-                          )}
+          <Accordion
+            type="multiple"
+            value={expandedCustomers}
+            onValueChange={setExpandedCustomers}
+          >
+            {filteredGroupedDues.map((customerDue) => (
+              <AccordionItem
+                key={customerDue.customerId}
+                value={customerDue.customerId}
+              >
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-0">
+                    <AccordionTrigger className="px-4 md:px-6 py-4 hover:no-underline">
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center space-x-3 flex-1">
+                          <div className="flex-shrink-0">
+                            <User className="h-8 w-8 text-blue-500" />
+                          </div>
+                          <div className="text-left flex-1">
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {customerDue.customerName}
+                            </h3>
+                            {customerDue.customerPhone && (
+                              <p className="text-sm text-gray-600">
+                                {customerDue.customerPhone}
+                              </p>
+                            )}
+                            <p className="text-sm text-gray-500">
+                              {customerDue.dues.length} transaction
+                              {customerDue.dues.length > 1 ? "s" : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-lg md:text-xl font-bold text-red-600">
+                            ₹
+                            {customerDue.totalDueAmount.toLocaleString("en-IN")}
+                          </div>
+                          <div className="text-sm text-gray-600">Total Due</div>
                         </div>
                       </div>
+                    </AccordionTrigger>
+                    <AccordionContent>
+                      <div className="border-t pt-4 space-y-3">
+                        {customerDue.dues.map((due) => {
+                          const daysOverdue = calculateDaysOverdue(
+                            due.createdAt
+                          );
+                          return (
+                            <div
+                              key={due.id}
+                              className="bg-gray-50 rounded-lg p-4"
+                            >
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center text-sm text-gray-600">
+                                      <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
+                                      <span className="truncate">
+                                        Invoice: {due.invoiceNo}
+                                      </span>
+                                    </div>
+                                    <Badge
+                                      className={`text-xs ${getStatusColor(
+                                        due.status
+                                      )}`}
+                                    >
+                                      {due.status}
+                                    </Badge>
+                                  </div>
+                                  {daysOverdue > 7 && (
+                                    <Badge
+                                      variant="destructive"
+                                      className="text-xs"
+                                    >
+                                      {daysOverdue}d overdue
+                                    </Badge>
+                                  )}
+                                </div>
+                                <div className="space-y-2 text-left md:text-right">
+                                  <div className="text-sm text-gray-600">
+                                    Total: ₹
+                                    {due.totalAmount.toLocaleString("en-IN")}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    Paid: ₹
+                                    {due.paidAmount.toLocaleString("en-IN")}
+                                  </div>
+                                  <div
+                                    className={`text-base font-bold ${getOverdueColor(
+                                      daysOverdue
+                                    )}`}
+                                  >
+                                    Due: ₹
+                                    {due.dueAmount.toLocaleString("en-IN")}
+                                  </div>
+                                </div>
+                              </div>
 
-                      {/* Due Details - Stack on mobile */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-3">
-                        <div className="space-y-2">
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
-                            <span className="truncate">
-                              Invoice: {due.invoiceNo}
-                            </span>
-                          </div>
-                          {due.customer.phone && (
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Phone className="h-4 w-4 mr-2 flex-shrink-0" />
-                              <span className="truncate">
-                                {due.customer.phone}
-                              </span>
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div className="text-sm text-gray-500">
+                                  Created{" "}
+                                  {new Date(due.createdAt).toLocaleDateString()}
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() =>
+                                      window.open(`tel:${due.customer.phone}`)
+                                    }
+                                    disabled={!due.customer.phone}
+                                  >
+                                    <Phone className="h-4 w-4 mr-2" />
+                                    <span className="hidden sm:inline">
+                                      Call
+                                    </span>
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 sm:flex-none"
+                                    onClick={() => sendPaymentReminder(due)}
+                                  >
+                                    <MessageSquare className="h-4 w-4 mr-2" />
+                                    <span className="hidden sm:inline">
+                                      Remind
+                                    </span>
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
+                                    onClick={() => openPaymentDialog(due)}
+                                  >
+                                    <CheckCircle className="h-4 w-4 mr-2" />
+                                    <span className="hidden sm:inline">
+                                      Pay
+                                    </span>
+                                  </Button>
+                                </div>
+                              </div>
                             </div>
-                          )}
-                        </div>
-                        <div className="space-y-2 text-left md:text-right">
-                          <div className="text-sm text-gray-600">
-                            Total: ₹{due.totalAmount.toLocaleString("en-IN")}
-                          </div>
-                          <div className="text-sm text-gray-600">
-                            Paid: ₹{due.paidAmount.toLocaleString("en-IN")}
-                          </div>
-                          <div
-                            className={`text-base md:text-lg font-bold ${getOverdueColor(
-                              daysOverdue
-                            )}`}
-                          >
-                            Due: ₹{due.dueAmount.toLocaleString("en-IN")}
-                          </div>
-                        </div>
+                          );
+                        })}
                       </div>
-
-                      {/* Action Buttons - Stack on mobile */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                        <div className="text-sm text-gray-500">
-                          Created {new Date(due.createdAt).toLocaleDateString()}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 sm:flex-none"
-                            onClick={() =>
-                              window.open(`tel:${due.customer.phone}`)
-                            }
-                            disabled={!due.customer.phone}
-                          >
-                            <Phone className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">Call</span>
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="flex-1 sm:flex-none"
-                            onClick={() => sendPaymentReminder(due)}
-                          >
-                            <MessageSquare className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">Remind</span>
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="flex-1 sm:flex-none bg-green-600 hover:bg-green-700"
-                            onClick={() => openPaymentDialog(due)}
-                          >
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            <span className="hidden sm:inline">
-                              Record Payment
-                            </span>
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })
+                    </AccordionContent>
+                  </CardContent>
+                </Card>
+              </AccordionItem>
+            ))}
+          </Accordion>
         )}
       </div>
 
-      {/* Payment Recording Dialog */}
+      {/* Payment Recording Dialog (keep the same as before) */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
