@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
     const type = searchParams.get("type");
+    const customerId = searchParams.get("customerId");
 
     // Build where clause
     const whereClause: any = {
@@ -25,6 +26,10 @@ export async function GET(request: NextRequest) {
 
     if (type && type !== "all") {
       whereClause.type = type;
+    }
+
+    if (customerId) {
+      whereClause.customerId = customerId;
     }
 
     // Fetch advance payments with customer and sale info

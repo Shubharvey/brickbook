@@ -24,23 +24,29 @@ import {
   CreditCard,
   RefreshCw,
   Search,
+  Wallet,
+  ArrowUpRight,
+  ArrowDownLeft,
+  Receipt,
+  Plus,
+  History,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 // Utility functions
-const safeNumber = (value, defaultValue = 0) => {
+const safeNumber = (value: any, defaultValue = 0) => {
   if (value === null || value === undefined) return defaultValue;
   const num = Number(value);
   return isNaN(num) ? defaultValue : num;
 };
 
-const safeString = (value, defaultValue = "") => {
+const safeString = (value: any, defaultValue = "") => {
   return value ? String(value) : defaultValue;
 };
 
-const safeDate = (value) => {
+const safeDate = (value: string) => {
   if (!value) return "Unknown";
   try {
     return new Date(value).toLocaleDateString("en-IN", {
@@ -53,10 +59,57 @@ const safeDate = (value) => {
   }
 };
 
-const formatCurrency = (amount) => {
+const formatCurrency = (amount: number) => {
   const safeAmount = safeNumber(amount, 0);
   return `₹${safeAmount.toLocaleString("en-IN")}`;
 };
+
+interface Customer {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  createdAt: string;
+  advanceBalance: number;
+  dueAmount: number;
+  lastPurchaseDate?: string;
+}
+
+interface Sale {
+  id: string;
+  invoiceNo: string;
+  totalAmount: number;
+  paidAmount: number;
+  dueAmount: number;
+  status: string;
+  paymentType: string;
+  createdAt: string;
+  items?: any[];
+}
+
+interface Payment {
+  id: string;
+  amount: number;
+  method: string;
+  referenceNumber?: string;
+  createdAt: string;
+  invoiceNo?: string;
+  notes?: string;
+}
+
+interface AdvanceTransaction {
+  id: string;
+  amount: number;
+  type: "ADVANCE_ADDED" | "ADVANCE_PAYMENT" | "ADVANCE_USED";
+  description: string;
+  reference?: string;
+  saleId?: string;
+  createdAt: string;
+  sale?: {
+    invoiceNo: string;
+  };
+}
 
 export default function CustomerProfilePage() {
   const params = useParams();
@@ -64,9 +117,12 @@ export default function CustomerProfilePage() {
   const { token } = useAuth();
 
   const [activeTab, setActiveTab] = useState("overview");
-  const [customer, setCustomer] = useState(null);
-  const [sales, setSales] = useState([]);
-  const [payments, setPayments] = useState([]);
+  const [customer, setCustomer] = useState<Customer | null>(null);
+  const [sales, setSales] = useState<Sale[]>([]);
+  const [payments, setPayments] = useState<Payment[]>([]);
+  const [advanceTransactions, setAdvanceTransactions] = useState<
+    AdvanceTransaction[]
+  >([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isError, setIsError] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
@@ -121,6 +177,21 @@ export default function CustomerProfilePage() {
       } catch (paymentsError) {
         console.log("Payments API error:", paymentsError);
       }
+
+      try {
+        const advanceRes = await fetch(
+          `/api/advance/transactions?customerId=${params.id}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+        if (advanceRes.ok) {
+          const advanceData = await advanceRes.json();
+          setAdvanceTransactions(advanceData.transactions || []);
+        }
+      } catch (advanceError) {
+        console.log("Advance transactions API error:", advanceError);
+      }
     } catch (error) {
       console.error("Failed to fetch customer data:", error);
       setIsError(true);
@@ -134,7 +205,7 @@ export default function CustomerProfilePage() {
     fetchCustomerData();
   };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = (status: string) => {
     const variants = {
       paid: "bg-green-100 text-green-800",
       partial: "bg-orange-100 text-orange-800",
@@ -143,19 +214,59 @@ export default function CustomerProfilePage() {
 
     return (
       <Badge
-        className={`text-xs ${variants[status] || "bg-gray-100 text-gray-800"}`}
+        className={`text-xs ${
+          variants[status as keyof typeof variants] ||
+          "bg-gray-100 text-gray-800"
+        }`}
       >
         {safeString(status).toUpperCase()}
       </Badge>
     );
   };
 
+  const getTransactionTypeInfo = (type: string) => {
+    switch (type) {
+      case "ADVANCE_ADDED":
+        return {
+          label: "Manual Addition",
+          color: "bg-blue-100 text-blue-800",
+          icon: ArrowDownLeft,
+        };
+      case "ADVANCE_PAYMENT":
+        return {
+          label: "Extra Payment",
+          color: "bg-green-100 text-green-800",
+          icon: ArrowDownLeft,
+        };
+      case "ADVANCE_USED":
+        return {
+          label: "Advance Used",
+          color: "bg-orange-100 text-orange-800",
+          icon: ArrowUpRight,
+        };
+      default:
+        return {
+          label: type,
+          color: "bg-gray-100 text-gray-800",
+          icon: CreditCard,
+        };
+    }
+  };
+
+  const handleAddAdvance = () => {
+    router.push(`/advance?customer=${customer?.id}`);
+  };
+
+  const handleViewAdvanceHistory = () => {
+    router.push(`/advance?customer=${customer?.id}&tab=transactions`);
+  };
+
   // Safe item data access
-  const getItemRate = (item) => {
+  const getItemRate = (item: any) => {
     return item?.ratePerThousand || item?.rate || item?.price || 0;
   };
 
-  const getItemTotal = (item) => {
+  const getItemTotal = (item: any) => {
     return (
       item?.total ||
       item?.amount ||
@@ -163,12 +274,12 @@ export default function CustomerProfilePage() {
     );
   };
 
-  const downloadReceipt = async (sale) => {
+  const downloadReceipt = async (sale: Sale) => {
     try {
       // Generate items HTML content properly
       const itemsHtml = (sale.items || [])
         .map(
-          (item) => `
+          (item: any) => `
             <tr>
               <td>${safeString(item.name)}</td>
               <td>${safeString(item.brickType)} - ${safeString(item.size)}</td>
@@ -309,7 +420,7 @@ Customer: ${customer?.name || "N/A"}
 ITEMS:
 ${(sale.items || [])
   .map(
-    (item) =>
+    (item: any) =>
       `${safeString(item.name)} (${safeString(item.brickType)} - ${safeString(
         item.size
       )}): ${safeNumber(item.quantity)} units @ ${formatCurrency(
@@ -350,6 +461,15 @@ STATUS: ${safeString(sale.status).toUpperCase()}
     (sum, sale) => sum + safeNumber(sale.dueAmount),
     0
   );
+
+  // Calculate advance stats
+  const totalAdvanceAdded = advanceTransactions
+    .filter((t) => t.type === "ADVANCE_ADDED" || t.type === "ADVANCE_PAYMENT")
+    .reduce((sum, t) => sum + safeNumber(t.amount), 0);
+
+  const totalAdvanceUsed = advanceTransactions
+    .filter((t) => t.type === "ADVANCE_USED")
+    .reduce((sum, t) => sum + Math.abs(safeNumber(t.amount)), 0);
 
   if (isLoading) {
     return (
@@ -472,6 +592,71 @@ STATUS: ${safeString(sale.status).toUpperCase()}
               </Card>
             )}
           </div>
+
+          {/* Wallet Balance Card */}
+          <Card className="mb-6 border-l-4 border-l-green-500">
+            <CardContent className="p-6">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between">
+                <div className="flex items-center mb-4 md:mb-0">
+                  <Wallet className="h-10 w-10 text-green-600 mr-4" />
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">
+                      Wallet Balance
+                    </h3>
+                    <div className="flex items-center space-x-4 mt-1">
+                      <p className="text-2xl font-bold text-green-600">
+                        {formatCurrency(customer?.advanceBalance || 0)}
+                      </p>
+                      <Badge className="bg-green-100 text-green-800">
+                        Available
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button
+                    onClick={handleAddAdvance}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Advance
+                  </Button>
+                  <Button onClick={handleViewAdvanceHistory} variant="outline">
+                    <History className="h-4 w-4 mr-2" />
+                    View History
+                  </Button>
+                </div>
+              </div>
+
+              {/* Advance Summary */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Total Added</p>
+                  <p className="text-lg font-bold text-green-600">
+                    {formatCurrency(totalAdvanceAdded)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Total Used</p>
+                  <p className="text-lg font-bold text-orange-600">
+                    {formatCurrency(totalAdvanceUsed)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Current Balance</p>
+                  <p className="text-lg font-bold text-blue-600">
+                    {formatCurrency(customer?.advanceBalance || 0)}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-sm text-gray-600">Due Amount</p>
+                  <p className="text-lg font-bold text-red-600">
+                    {formatCurrency(customer?.dueAmount || 0)}
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Tabs */}
@@ -480,7 +665,7 @@ STATUS: ${safeString(sale.status).toUpperCase()}
           onValueChange={setActiveTab}
           className="space-y-6"
         >
-          <TabsList className="hidden md:grid grid-cols-3 w-full">
+          <TabsList className="hidden md:grid grid-cols-4 w-full">
             <TabsTrigger
               value="overview"
               className="flex items-center space-x-2"
@@ -501,6 +686,13 @@ STATUS: ${safeString(sale.status).toUpperCase()}
             >
               <CreditCard className="h-4 w-4" />
               <span>Payments</span>
+            </TabsTrigger>
+            <TabsTrigger
+              value="advance"
+              className="flex items-center space-x-2"
+            >
+              <Wallet className="h-4 w-4" />
+              <span>Advance</span>
             </TabsTrigger>
           </TabsList>
 
@@ -549,6 +741,17 @@ STATUS: ${safeString(sale.status).toUpperCase()}
               <CreditCard className="h-5 w-5 mb-1" />
               <span className="text-xs text-center truncate w-full">
                 Payments
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("advance")}
+              className={`flex flex-col items-center justify-center p-2 min-w-0 flex-1 transition-colors ${
+                activeTab === "advance" ? "text-blue-600" : "text-gray-600"
+              }`}
+            >
+              <Wallet className="h-5 w-5 mb-1" />
+              <span className="text-xs text-center truncate w-full">
+                Advance
               </span>
             </button>
           </div>
@@ -897,6 +1100,130 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          {/* NEW: Advance Tab */}
+          <TabsContent value="advance" className="space-y-6 pb-24 md:pb-6">
+            {/* Quick Actions */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        Add Advance
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        Manually add advance to customer's wallet
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleAddAdvance}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Advance
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">
+                        View History
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1">
+                        See all advance transactions
+                      </p>
+                    </div>
+                    <Button
+                      onClick={handleViewAdvanceHistory}
+                      variant="outline"
+                    >
+                      <History className="h-4 w-4 mr-2" />
+                      View History
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Advance Transactions */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <History className="h-5 w-5 mr-2" />
+                  Recent Advance Transactions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {advanceTransactions.length > 0 ? (
+                  <div className="space-y-4">
+                    {advanceTransactions.slice(0, 10).map((transaction) => {
+                      const typeInfo = getTransactionTypeInfo(transaction.type);
+                      const IconComponent = typeInfo.icon;
+
+                      return (
+                        <div
+                          key={transaction.id}
+                          className="flex items-center justify-between p-4 border rounded-lg"
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className={`p-2 rounded-lg ${typeInfo.color}`}>
+                              <IconComponent className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="font-semibold">{typeInfo.label}</p>
+                              <p className="text-sm text-gray-500">
+                                {transaction.description}
+                              </p>
+                              {transaction.sale?.invoiceNo && (
+                                <p className="text-xs text-blue-600">
+                                  Sale: {transaction.sale.invoiceNo}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-400">
+                                {safeDate(transaction.createdAt)}
+                              </p>
+                            </div>
+                          </div>
+                          <div
+                            className={`text-lg font-bold ${
+                              transaction.type === "ADVANCE_USED"
+                                ? "text-orange-600"
+                                : "text-green-600"
+                            }`}
+                          >
+                            {transaction.type === "ADVANCE_USED" ? "-" : "+"}
+                            {formatCurrency(Math.abs(transaction.amount))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Wallet className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                    <p className="text-lg font-semibold text-gray-900 mb-2">
+                      No advance transactions
+                    </p>
+                    <p className="text-gray-600 mb-4">
+                      No advance transactions recorded for this customer
+                    </p>
+                    <Button
+                      onClick={handleAddAdvance}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add First Advance
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>

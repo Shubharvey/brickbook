@@ -23,6 +23,10 @@ import {
   X,
   Contact,
   Smartphone,
+  Wallet,
+  DollarSign,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -42,6 +46,9 @@ interface Customer {
   email?: string;
   address?: string;
   createdAt: string;
+  advanceBalance: number; // Added advance balance
+  dueAmount: number;
+  lastPurchaseDate?: string;
 }
 
 interface ContactData {
@@ -81,6 +88,14 @@ export default function CustomerList() {
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
 
+  // Wallet summary stats
+  const [walletStats, setWalletStats] = useState({
+    totalAdvance: 0,
+    customersWithAdvance: 0,
+    highestAdvance: 0,
+    totalDue: 0,
+  });
+
   useEffect(() => {
     if (token) {
       fetchCustomers();
@@ -92,13 +107,14 @@ export default function CustomerList() {
       setIsLoading(true);
       const response = await fetch("/api/customers", {
         headers: {
-          Authorization: `Bearer ${token}`, // FIXED: Added Authorization header
+          Authorization: `Bearer ${token}`,
         },
       });
 
       if (response.ok) {
         const data = await response.json();
         setCustomers(data);
+        calculateWalletStats(data);
       } else {
         setError("Failed to fetch customers");
       }
@@ -108,6 +124,50 @@ export default function CustomerList() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const calculateWalletStats = (customerData: Customer[]) => {
+    const totalAdvance = customerData.reduce(
+      (sum, customer) => sum + customer.advanceBalance,
+      0
+    );
+    const customersWithAdvance = customerData.filter(
+      (customer) => customer.advanceBalance > 0
+    ).length;
+    const highestAdvance = Math.max(
+      ...customerData.map((customer) => customer.advanceBalance)
+    );
+    const totalDue = customerData.reduce(
+      (sum, customer) => sum + customer.dueAmount,
+      0
+    );
+
+    setWalletStats({
+      totalAdvance,
+      customersWithAdvance,
+      highestAdvance,
+      totalDue,
+    });
+  };
+
+  const formatCurrency = (amount: number) => {
+    return `₹${amount.toLocaleString("en-IN")}`;
+  };
+
+  const getWalletBadgeVariant = (balance: number) => {
+    if (balance > 50000) return "bg-green-100 text-green-800 border-green-200";
+    if (balance > 10000) return "bg-blue-100 text-blue-800 border-blue-200";
+    if (balance > 0)
+      return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    return "bg-gray-100 text-gray-800 border-gray-200";
+  };
+
+  const getDueBadgeVariant = (amount: number) => {
+    if (amount > 50000) return "bg-red-100 text-red-800 border-red-200";
+    if (amount > 10000)
+      return "bg-orange-100 text-orange-800 border-orange-200";
+    if (amount > 0) return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    return "bg-gray-100 text-gray-800 border-gray-200";
   };
 
   const handleAddCustomer = async (e: React.FormEvent) => {
@@ -271,6 +331,11 @@ export default function CustomerList() {
     if (!editingCustomer) {
       router.push(`/customers/${customer.id}`);
     }
+  };
+
+  const handleWalletClick = (customer: Customer, e: React.MouseEvent) => {
+    e.stopPropagation();
+    router.push(`/advance?customer=${customer.id}`);
   };
 
   // Enhanced contact import functionality
@@ -452,7 +517,9 @@ export default function CustomerList() {
     (customer) =>
       customer.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       customer.phone?.includes(searchTerm) ||
-      customer.email?.toLowerCase().includes(searchTerm.toLowerCase())
+      customer.email?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      customer.advanceBalance.toString().includes(searchTerm) ||
+      customer.dueAmount.toString().includes(searchTerm)
   );
 
   useEffect(() => {
@@ -505,11 +572,71 @@ export default function CustomerList() {
         </div>
       </div>
 
+      {/* Wallet Summary Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+        <Card className="min-h-[100px]">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Wallet className="h-6 w-6 md:h-8 md:w-8 text-green-500" />
+              <div>
+                <p className="text-xs md:text-sm text-gray-600">
+                  Total Advance
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900">
+                  {formatCurrency(walletStats.totalAdvance)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="min-h-[100px]">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <Users className="h-6 w-6 md:h-8 md:w-8 text-blue-500" />
+              <div>
+                <p className="text-xs md:text-sm text-gray-600">With Advance</p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900">
+                  {walletStats.customersWithAdvance}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="min-h-[100px]">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-purple-500" />
+              <div>
+                <p className="text-xs md:text-sm text-gray-600">
+                  Highest Advance
+                </p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900">
+                  {formatCurrency(walletStats.highestAdvance)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="min-h-[100px]">
+          <CardContent className="p-4">
+            <div className="flex items-center space-x-2">
+              <TrendingDown className="h-6 w-6 md:h-8 md:w-8 text-red-500" />
+              <div>
+                <p className="text-xs md:text-sm text-gray-600">Total Due</p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900">
+                  {formatCurrency(walletStats.totalDue)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Search */}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
         <Input
-          placeholder="Search customers by name, phone, or email..."
+          placeholder="Search customers by name, phone, email, advance, or due amount..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10"
@@ -708,6 +835,29 @@ export default function CustomerList() {
                     >
                       <Eye className="h-4 w-4" />
                     </Button>
+                  </div>
+
+                  {/* Wallet and Due Balance */}
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <Badge
+                      className={`${getWalletBadgeVariant(
+                        customer.advanceBalance
+                      )} text-xs cursor-pointer hover:shadow-sm transition-shadow`}
+                      onClick={(e) => handleWalletClick(customer, e)}
+                    >
+                      <Wallet className="h-3 w-3 mr-1" />
+                      Advance: {formatCurrency(customer.advanceBalance)}
+                    </Badge>
+                    {customer.dueAmount > 0 && (
+                      <Badge
+                        className={`${getDueBadgeVariant(
+                          customer.dueAmount
+                        )} text-xs`}
+                      >
+                        <DollarSign className="h-3 w-3 mr-1" />
+                        Due: {formatCurrency(customer.dueAmount)}
+                      </Badge>
+                    )}
                   </div>
 
                   <div className="mt-3 space-y-2">
