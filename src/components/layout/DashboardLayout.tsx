@@ -1,17 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Menu, Truck, Bell } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Menu, Truck, User, Settings, LogOut, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Sidebar from "./Sidebar";
-import BottomNavigation from "./BottomNavigation"; // ADD THIS IMPORT
+import BottomNavigation from "./BottomNavigation";
 import Link from "next/link";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface DeliveryStats {
   pendingCount: number;
   scheduledCount: number;
-  totalNotifications: number;
 }
 
 export default function DashboardLayout({
@@ -20,13 +19,31 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [deliveryStats, setDeliveryStats] = useState<DeliveryStats>({
     pendingCount: 0,
     scheduledCount: 0,
-    totalNotifications: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const { token } = useAuth();
+  const { user, logout, token } = useAuth();
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        userMenuRef.current &&
+        !userMenuRef.current.contains(event.target as Node)
+      ) {
+        setUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Fetch real delivery stats
   useEffect(() => {
@@ -48,11 +65,9 @@ export default function DashboardLayout({
         const data = await response.json();
         setDeliveryStats(data);
       } else {
-        // If no data, set all to zero
         setDeliveryStats({
           pendingCount: 0,
           scheduledCount: 0,
-          totalNotifications: 0,
         });
       }
     } catch (error) {
@@ -60,11 +75,14 @@ export default function DashboardLayout({
       setDeliveryStats({
         pendingCount: 0,
         scheduledCount: 0,
-        totalNotifications: 0,
       });
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleLogout = async () => {
+    await logout();
   };
 
   return (
@@ -123,7 +141,7 @@ export default function DashboardLayout({
               </div>
             </div>
 
-            {/* Right side - Delivery Status & Notifications */}
+            {/* Right side - Delivery Status & User Menu */}
             <div className="flex items-center space-x-3">
               {/* Delivery Status Button */}
               <Link href="/deliveries">
@@ -143,29 +161,78 @@ export default function DashboardLayout({
                 </Button>
               </Link>
 
-              {/* Notifications Bell - Only show if there are notifications */}
-              {!isLoading && deliveryStats.totalNotifications > 0 && (
+              {/* User Menu Dropdown - Visible on ALL devices */}
+              <div className="relative" ref={userMenuRef}>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="relative lg:hover:bg-orange-50 lg:hover:text-orange-600 active:bg-orange-100 active:scale-95 transition-all duration-150"
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 text-gray-700 hover:text-gray-900 hover:bg-gray-100 active:bg-gray-200 transition-all duration-150"
                 >
-                  <Bell className="h-5 w-5" />
-                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 flex items-center justify-center">
-                    {deliveryStats.totalNotifications}
+                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                    <User className="h-4 w-4 text-orange-600" />
+                  </div>
+                  {/* Show user name on desktop, just icon on mobile */}
+                  <span className="hidden sm:block text-sm font-medium max-w-32 truncate">
+                    {user?.name || user?.email}
                   </span>
+                  <ChevronDown
+                    className={`h-4 w-4 transition-transform duration-200 ${
+                      userMenuOpen ? "rotate-180" : ""
+                    }`}
+                  />
                 </Button>
-              )}
+
+                {/* Dropdown Menu */}
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                    {/* User Info */}
+                    <div className="px-4 py-3 border-b border-gray-100">
+                      <p className="text-sm font-medium text-gray-900 truncate">
+                        {user?.name || user?.email}
+                      </p>
+                      {user?.company && (
+                        <p className="text-xs text-gray-500 truncate mt-1">
+                          {user.company}
+                        </p>
+                      )}
+                      <p className="text-xs text-gray-400 mt-1">Logged in</p>
+                    </div>
+
+                    {/* Settings Link */}
+                    <Link
+                      href="/settings"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors duration-150"
+                    >
+                      <Settings className="h-4 w-4 mr-3 text-gray-400" />
+                      Settings
+                    </Link>
+
+                    {/* Logout Button */}
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        handleLogout();
+                      }}
+                      className="flex items-center w-full px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors duration-150"
+                    >
+                      <LogOut className="h-4 w-4 mr-3" />
+                      Logout
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </header>
 
-        {/* Page content - ADD BOTTOM PADDING FOR MOBILE */}
+        {/* Page content */}
         <main className="flex-1 overflow-auto pb-20 lg:pb-0">
           <div className="p-4 lg:p-6">{children}</div>
         </main>
 
-        {/* ADD BOTTOM NAVIGATION HERE */}
+        {/* Bottom Navigation */}
         <BottomNavigation />
       </div>
     </div>

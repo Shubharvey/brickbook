@@ -1,29 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useAuth } from "@/contexts/AuthContext";
+import { usePathname } from "next/navigation";
 import {
   Home,
   Users,
   ShoppingCart,
   DollarSign,
-  FileText,
+  CreditCard,
   Truck,
-  Settings,
-  LogOut,
-  CreditCard, // ADDED: Icon for Advance
 } from "lucide-react";
 
 export default function BottomNavigation() {
   const pathname = usePathname();
-  const { logout } = useAuth();
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    await logout();
-    router.push("/");
-  };
 
   const navItems = [
     {
@@ -47,14 +36,14 @@ export default function BottomNavigation() {
       href: "/dues",
     },
     {
-      title: "Advance", // ADDED: Advance page
+      title: "Advance",
       icon: CreditCard,
       href: "/advance",
     },
     {
-      title: "Settings",
-      icon: Settings,
-      href: "/settings",
+      title: "Delivery",
+      icon: Truck,
+      href: "/deliveries",
     },
   ];
 
@@ -94,13 +83,7 @@ export default function BottomNavigation() {
           );
         })}
 
-        <button
-          onClick={handleLogout}
-          className="flex flex-col items-center justify-center p-2 min-w-0 flex-1 text-gray-600 transition-colors hover:text-red-600"
-        >
-          <LogOut className="h-5 w-5 mb-1" />
-          <span className="text-xs text-center truncate w-full">Logout</span>
-        </button>
+        {/* REMOVED: Settings and Logout buttons */}
       </div>
     </div>
   );
