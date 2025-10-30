@@ -21,12 +21,12 @@ import {
   Save,
   ShoppingCart,
   DollarSign,
-  Receipt, // FIXED: Added missing icon
+  Receipt,
   Search,
   Printer,
   Truck,
   User,
-  X, // FIXED: Added X icon for clear button
+  X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -75,6 +75,7 @@ interface Customer {
   dueAmount: number;
   lastPurchaseDate?: string;
   averageMonthlyPurchase: number;
+  advanceBalance: number; // Added advance balance
 }
 
 interface SaleItem {
@@ -147,6 +148,12 @@ export default function SalesEntry() {
   const [paymentReference, setPaymentReference] = useState("");
   const [bankTransactionId, setBankTransactionId] = useState("");
 
+  // NEW: Advance payment fields
+  const [advancePayment, setAdvancePayment] = useState(""); // Extra amount paid as advance
+  const [useAdvance, setUseAdvance] = useState(false); // Toggle to use existing advance
+  const [advanceUsed, setAdvanceUsed] = useState(""); // Amount of advance to use
+  const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0); // Customer's current advance balance
+
   // FIXED: Better ref management for dropdown
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -206,13 +213,14 @@ export default function SalesEntry() {
     );
   }, [customers, customerSearch]);
 
-  // FIXED: Improved customer selection logic
+  // FIXED: Improved customer selection logic with advance balance
   const handleCustomerSelect = (customerId: string) => {
     const customer = customers.find((c) => c.id === customerId);
     if (customer) {
       setSelectedCustomer(customerId);
       setCustomerSearch(customer.name);
       setShowCustomerDropdown(false);
+      setCustomerAdvanceBalance(customer.advanceBalance || 0);
 
       // Auto-fill delivery address with customer's address
       if (!useDifferentDeliveryAddress) {
@@ -231,6 +239,10 @@ export default function SalesEntry() {
     setSelectedCustomer("");
     setCustomerSearch("");
     setShowCustomerDropdown(false);
+    setCustomerAdvanceBalance(0);
+    setUseAdvance(false);
+    setAdvanceUsed("");
+    setAdvancePayment("");
   };
 
   const handleCreateCustomer = async () => {
@@ -262,6 +274,7 @@ export default function SalesEntry() {
           totalLifetimeValue: 0,
           dueAmount: 0,
           averageMonthlyPurchase: 0,
+          advanceBalance: 0,
         }),
       });
 
@@ -270,6 +283,7 @@ export default function SalesEntry() {
         setCustomers([...customers, createdCustomer]);
         setSelectedCustomer(createdCustomer.id);
         setCustomerSearch(createdCustomer.name);
+        setCustomerAdvanceBalance(0);
         setNewCustomer({
           name: "",
           phone: "",
@@ -354,10 +368,37 @@ export default function SalesEntry() {
     return Math.max(0, subtotal - discount);
   };
 
+  // UPDATED: Calculate due with advance logic
   const calculateDue = () => {
     const grandTotal = calculateGrandTotal();
     const paid = parseFloat(paidAmount) || 0;
-    return Math.max(0, grandTotal - paid);
+    const advance = parseFloat(advanceUsed) || 0;
+    const extraAdvance = parseFloat(advancePayment) || 0;
+
+    // Total payment = cash paid + advance used
+    const totalPayment = paid + advance;
+
+    return Math.max(0, grandTotal - totalPayment);
+  };
+
+  // NEW: Calculate payment breakdown
+  const calculatePaymentBreakdown = () => {
+    const grandTotal = calculateGrandTotal();
+    const paid = parseFloat(paidAmount) || 0;
+    const advance = parseFloat(advanceUsed) || 0;
+    const extraAdvance = parseFloat(advancePayment) || 0;
+
+    const totalPayment = paid + advance;
+    const due = Math.max(0, grandTotal - totalPayment);
+
+    return {
+      cashPaid: paid,
+      advanceUsed: advance,
+      extraAdvance: extraAdvance,
+      totalPayment,
+      due,
+      newAdvanceBalance: customerAdvanceBalance - advance + extraAdvance,
+    };
   };
 
   // FIXED: Improved form validation
@@ -389,6 +430,15 @@ export default function SalesEntry() {
       newErrors.payment = "Payment reference is required for non-cash payments";
     }
 
+    // Validate advance usage
+    if (useAdvance && (!advanceUsed || parseFloat(advanceUsed) <= 0)) {
+      newErrors.payment = "Please enter a valid advance amount to use";
+    }
+
+    if (useAdvance && parseFloat(advanceUsed) > customerAdvanceBalance) {
+      newErrors.payment = "Advance amount cannot exceed available balance";
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -404,6 +454,7 @@ export default function SalesEntry() {
     const discountAmount = calculateDiscount();
     const grandTotal = calculateGrandTotal();
     const due = calculateDue();
+    const breakdown = calculatePaymentBreakdown();
 
     const customerData = customers.find((c) => c.id === selectedCustomer);
     const printContent = `
@@ -420,6 +471,7 @@ export default function SalesEntry() {
             .items th { background-color: #f2f2f2; }
             .total { text-align: right; margin-top: 20px; }
             .footer { margin-top: 30px; text-align: center; font-size: 12px; }
+            .advance-info { background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin: 10px 0; }
           </style>
         </head>
         <body>
@@ -492,17 +544,42 @@ export default function SalesEntry() {
                 : ""
             }
             <p><strong>Grand Total:</strong> ₹${grandTotal.toFixed(2)}</p>
+            
             ${
-              (paymentType === "partial" || paymentType === "credit") &&
-              paidAmount
+              breakdown.advanceUsed > 0
                 ? `
-              <p><strong>${
-                paymentType === "partial" ? "Paid Amount:" : "Advance Amount:"
-              }</strong> ₹${parseFloat(paidAmount).toFixed(2)}</p>
-              <p><strong>Due Amount:</strong> ₹${due.toFixed(2)}</p>
+              <p><strong>Advance Used:</strong> -₹${breakdown.advanceUsed.toFixed(
+                2
+              )}</p>
             `
                 : ""
             }
+            ${
+              breakdown.cashPaid > 0
+                ? `
+              <p><strong>Cash Paid:</strong> ₹${breakdown.cashPaid.toFixed(
+                2
+              )}</p>
+            `
+                : ""
+            }
+            ${
+              breakdown.extraAdvance > 0
+                ? `
+              <p><strong>Extra Advance Paid:</strong> +₹${breakdown.extraAdvance.toFixed(
+                2
+              )}</p>
+            `
+                : ""
+            }
+            ${
+              breakdown.due > 0
+                ? `
+              <p><strong>Due Amount:</strong> ₹${breakdown.due.toFixed(2)}</p>
+            `
+                : ""
+            }
+            
             <p><strong>Payment Type:</strong> ${
               paymentType === "cash"
                 ? "Full Cash"
@@ -522,6 +599,22 @@ export default function SalesEntry() {
                 : ""
             }
           </div>
+          
+          ${
+            breakdown.advanceUsed > 0 || breakdown.extraAdvance > 0
+              ? `
+            <div class="advance-info">
+              <h3>Advance Summary</h3>
+              <p><strong>Previous Advance Balance:</strong> ₹${customerAdvanceBalance.toFixed(
+                2
+              )}</p>
+              <p><strong>New Advance Balance:</strong> ₹${breakdown.newAdvanceBalance.toFixed(
+                2
+              )}</p>
+            </div>
+          `
+              : ""
+          }
           
           ${
             notes
@@ -616,6 +709,10 @@ export default function SalesEntry() {
         deliveryAddress: useDifferentDeliveryAddress ? deliveryAddress : null,
         deliveryDate: deliveryDate || null,
         deliveryStatus,
+        // NEW: Advance payment fields
+        advancePayment: parseFloat(advancePayment) || 0,
+        useAdvance: useAdvance,
+        advanceUsed: parseFloat(advanceUsed) || 0,
       };
 
       const response = await fetch("/api/sales", {
@@ -648,6 +745,12 @@ export default function SalesEntry() {
         setDeliveryStatus("pending");
         setPaymentReference("");
         setBankTransactionId("");
+        // NEW: Reset advance fields
+        setAdvancePayment("");
+        setUseAdvance(false);
+        setAdvanceUsed("");
+        setCustomerAdvanceBalance(0);
+
         alert("Sale saved successfully!");
       } else {
         const errorData = await response.json();
@@ -665,6 +768,7 @@ export default function SalesEntry() {
   const discountAmount = calculateDiscount();
   const grandTotal = calculateGrandTotal();
   const due = calculateDue();
+  const breakdown = calculatePaymentBreakdown();
 
   return (
     <div className="space-y-6">
@@ -706,6 +810,7 @@ export default function SalesEntry() {
                         setShowCustomerDropdown(true);
                         if (!value) {
                           setSelectedCustomer("");
+                          setCustomerAdvanceBalance(0);
                         }
                       }}
                       onFocus={() => setShowCustomerDropdown(true)}
@@ -719,7 +824,7 @@ export default function SalesEntry() {
                         onClick={clearCustomerSelection}
                         className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
                       >
-                        <X className="h-4 w-4" /> {/* FIXED: Using X icon */}
+                        <X className="h-4 w-4" />
                       </button>
                     )}
                   </div>
@@ -741,11 +846,18 @@ export default function SalesEntry() {
                             <div className="text-sm text-gray-500">
                               {customer.phone} • {customer.customerType}
                             </div>
-                            {customer.dueAmount > 0 && (
-                              <div className="text-xs text-red-600">
-                                Due: ₹{customer.dueAmount.toFixed(2)}
-                              </div>
-                            )}
+                            <div className="text-xs">
+                              {customer.dueAmount > 0 && (
+                                <span className="text-red-600">
+                                  Due: ₹{customer.dueAmount.toFixed(2)}
+                                </span>
+                              )}
+                              {customer.advanceBalance > 0 && (
+                                <span className="text-green-600 ml-2">
+                                  Advance: ₹{customer.advanceBalance.toFixed(2)}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))
                       ) : (
@@ -794,6 +906,7 @@ export default function SalesEntry() {
                   setShowCustomerDropdown(false);
                   setCustomerSearch("");
                   setSelectedCustomer("");
+                  setCustomerAdvanceBalance(0);
                 }}
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -1013,20 +1126,17 @@ export default function SalesEntry() {
                           ` • Due: ₹${customers
                             .find((c) => c.id === selectedCustomer)
                             ?.dueAmount.toFixed(2)}`}
+                        {customerAdvanceBalance > 0 &&
+                          ` • Advance: ₹${customerAdvanceBalance.toFixed(2)}`}
                       </div>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => {
-                        e.preventDefault(); // FIXED: Prevent any form submission
-                        e.stopPropagation(); // FIXED: Prevent event bubbling
-                        removeItem(item.id);
-                      }}
-                      disabled={items.length === 1}
-                      className="mt-6 text-red-600 hover:text-red-800 hover:bg-red-50"
+                      onClick={clearCustomerSelection}
+                      className="text-red-600 hover:text-red-800 hover:bg-red-50"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <X className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
@@ -1034,7 +1144,7 @@ export default function SalesEntry() {
             </CardContent>
           </Card>
 
-          {/* Items Section - FIXED: Quantity now has full typing freedom */}
+          {/* Items Section */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
@@ -1085,7 +1195,7 @@ export default function SalesEntry() {
                       )}
                     </div>
 
-                    {/* Quantity - FIXED: Simple and free typing like price field */}
+                    {/* Quantity */}
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-600">Quantity</Label>
                       <Input
@@ -1142,7 +1252,7 @@ export default function SalesEntry() {
                     </div>
                   </div>
 
-                  {/* Delete Button - FIXED: Now working properly */}
+                  {/* Delete Button */}
                   <Button
                     variant="ghost"
                     size="sm"
@@ -1162,6 +1272,151 @@ export default function SalesEntry() {
               {errors.items && (
                 <div className="p-3 bg-red-50 border border-red-200 rounded-md">
                   <p className="text-sm text-red-600">{errors.items}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* NEW: Advance Payment Section */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <DollarSign className="h-5 w-5 mr-2" />
+                Advance Payment Options
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Show current advance balance when customer is selected */}
+              {selectedCustomer && customerAdvanceBalance > 0 && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                  <div className="text-sm font-medium text-blue-800">
+                    💰 Advance Balance Available
+                  </div>
+                  <div className="text-lg font-bold text-blue-900">
+                    ₹{customerAdvanceBalance.toFixed(2)}
+                  </div>
+                  <div className="text-xs text-blue-700">
+                    Customer:{" "}
+                    {customers.find((c) => c.id === selectedCustomer)?.name}
+                  </div>
+                </div>
+              )}
+
+              {/* Use Advance Option */}
+              <div className="space-y-3">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="use-advance"
+                    checked={useAdvance}
+                    onChange={(e) => {
+                      setUseAdvance(e.target.checked);
+                      if (!e.target.checked) {
+                        setAdvanceUsed("");
+                      }
+                    }}
+                    disabled={!selectedCustomer || customerAdvanceBalance <= 0}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="use-advance" className="text-sm font-medium">
+                    Use Advance Balance for Payment
+                  </Label>
+                </div>
+
+                {useAdvance && (
+                  <div className="space-y-2 pl-6">
+                    <Label htmlFor="advance-used">
+                      Amount to Use from Advance *
+                    </Label>
+                    <Input
+                      id="advance-used"
+                      type="number"
+                      placeholder="Enter amount"
+                      min="0"
+                      max={customerAdvanceBalance}
+                      step="0.01"
+                      value={advanceUsed}
+                      onChange={(e) => {
+                        const value = parseFloat(e.target.value) || 0;
+                        if (value <= customerAdvanceBalance) {
+                          setAdvanceUsed(e.target.value);
+                        }
+                      }}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>
+                        Available: ₹{customerAdvanceBalance.toFixed(2)}
+                      </span>
+                      <span>
+                        Remaining after use: ₹
+                        {(
+                          customerAdvanceBalance -
+                          (parseFloat(advanceUsed) || 0)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Extra Advance Payment */}
+              <div className="space-y-2">
+                <Label htmlFor="advance-payment">
+                  Extra Advance Payment (Optional)
+                </Label>
+                <Input
+                  id="advance-payment"
+                  type="number"
+                  placeholder="Enter extra amount to add as advance"
+                  min="0"
+                  step="0.01"
+                  value={advancePayment}
+                  onChange={(e) => setAdvancePayment(e.target.value)}
+                />
+                <p className="text-xs text-gray-500">
+                  This amount will be added to customer's advance balance after
+                  the sale
+                </p>
+              </div>
+
+              {/* Payment Breakdown Preview */}
+              {(useAdvance || advancePayment) && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-800 mb-2">
+                    Payment Breakdown
+                  </div>
+                  <div className="space-y-1 text-xs">
+                    {breakdown.advanceUsed > 0 && (
+                      <div className="flex justify-between">
+                        <span>Advance Used:</span>
+                        <span className="font-medium">
+                          -₹{breakdown.advanceUsed.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.cashPaid > 0 && (
+                      <div className="flex justify-between">
+                        <span>Cash Paid:</span>
+                        <span className="font-medium">
+                          ₹{breakdown.cashPaid.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    {breakdown.extraAdvance > 0 && (
+                      <div className="flex justify-between">
+                        <span>Extra Advance:</span>
+                        <span className="font-medium text-blue-600">
+                          +₹{breakdown.extraAdvance.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="border-t pt-1 mt-1">
+                      <div className="flex justify-between font-medium">
+                        <span>New Advance Balance:</span>
+                        <span>₹{breakdown.newAdvanceBalance.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -1268,7 +1523,6 @@ export default function SalesEntry() {
                     type="date"
                     value={deliveryDate}
                     onChange={(e) => setDeliveryDate(e.target.value)}
-                    // Allow any date when in back date mode, otherwise restrict to today and future dates
                     min={
                       isBackDate
                         ? undefined
@@ -1535,6 +1789,18 @@ export default function SalesEntry() {
                 </div>
               )}
 
+              {/* Advance Balance in Summary */}
+              {selectedCustomer && customerAdvanceBalance > 0 && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
+                  <div className="text-sm font-medium text-green-800">
+                    💰 Current Advance Balance
+                  </div>
+                  <div className="text-lg font-bold text-green-900">
+                    ₹{customerAdvanceBalance.toFixed(2)}
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-2">
                 {items
                   .filter((item) => item.name)
@@ -1618,23 +1884,46 @@ export default function SalesEntry() {
                   </div>
                 </div>
 
-                {(paymentType === "partial" || paymentType === "credit") &&
-                  paidAmount && (
-                    <>
-                      <div className="flex justify-between">
-                        <span>
-                          {paymentType === "partial"
-                            ? "Paid Amount:"
-                            : "Advance Amount:"}
-                        </span>
-                        <span>₹{parseFloat(paidAmount).toFixed(2)}</span>
+                {/* Payment Breakdown */}
+                {(breakdown.cashPaid > 0 ||
+                  breakdown.advanceUsed > 0 ||
+                  breakdown.extraAdvance > 0) && (
+                  <div className="border-t pt-2 space-y-2">
+                    {breakdown.advanceUsed > 0 && (
+                      <div className="flex justify-between text-sm text-blue-600">
+                        <span>Advance Used:</span>
+                        <span>-₹{breakdown.advanceUsed.toFixed(2)}</span>
                       </div>
+                    )}
+                    {breakdown.cashPaid > 0 && (
+                      <div className="flex justify-between text-sm">
+                        <span>Cash Paid:</span>
+                        <span>₹{breakdown.cashPaid.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {breakdown.extraAdvance > 0 && (
+                      <div className="flex justify-between text-sm text-green-600">
+                        <span>Extra Advance:</span>
+                        <span>+₹{breakdown.extraAdvance.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {breakdown.due > 0 && (
                       <div className="flex justify-between font-semibold text-red-600">
                         <span>Due Amount:</span>
-                        <span>₹{due.toFixed(2)}</span>
+                        <span>₹{breakdown.due.toFixed(2)}</span>
                       </div>
-                    </>
-                  )}
+                    )}
+                    {(breakdown.advanceUsed > 0 ||
+                      breakdown.extraAdvance > 0) && (
+                      <div className="flex justify-between text-sm border-t pt-1">
+                        <span>New Advance Balance:</span>
+                        <span className="font-medium">
+                          ₹{breakdown.newAdvanceBalance.toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 <div className="flex justify-between">
                   <span>Payment Type:</span>

@@ -72,6 +72,7 @@ model Sale {
   payments          Payment[]
   customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  advancePayments   AdvancePayment[]
 
   @@index([userId])
   @@index([customerId])
@@ -98,19 +99,28 @@ model Payment {
 }
 
 model AdvancePayment {
-  id          String   @id @default(cuid())
+  id          String       @id @default(cuid())
   customerId  String
   userId      String
   amount      Float
-  type        String
+  type        AdvanceType
   description String?
   reference   String?
   notes       String?
-  createdAt   DateTime @default(now())
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  saleId      String?
+  createdAt   DateTime     @default(now())
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sale        Sale?        @relation(fields: [saleId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
   @@index([userId])
   @@index([createdAt])
+  @@index([saleId])
+}
+
+enum AdvanceType {
+  ADVANCE_ADDED
+  ADVANCE_PAYMENT
+  ADVANCE_USED
 }
