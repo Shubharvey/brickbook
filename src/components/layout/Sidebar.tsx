@@ -12,6 +12,7 @@ import {
   FileText,
   Settings,
   LogOut,
+  CreditCard, // ADDED: Icon for Advance
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -20,6 +21,7 @@ const navigation = [
   { name: "Customers", href: "/customers", icon: Users },
   { name: "New Sale", href: "/sales", icon: ShoppingCart },
   { name: "Dues", href: "/dues", icon: DollarSign },
+  { name: "Advance", href: "/advance", icon: CreditCard }, // ADDED: Advance page
   { name: "Reports", href: "/reports", icon: FileText },
   { name: "Settings", href: "/settings", icon: Settings },
 ];

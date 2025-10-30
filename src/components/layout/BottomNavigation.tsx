@@ -12,6 +12,7 @@ import {
   Truck,
   Settings,
   LogOut,
+  CreditCard, // ADDED: Icon for Advance
 } from "lucide-react";
 
 export default function BottomNavigation() {
@@ -44,6 +45,11 @@ export default function BottomNavigation() {
       title: "Dues",
       icon: DollarSign,
       href: "/dues",
+    },
+    {
+      title: "Advance", // ADDED: Advance page
+      icon: CreditCard,
+      href: "/advance",
     },
     {
       title: "Settings",

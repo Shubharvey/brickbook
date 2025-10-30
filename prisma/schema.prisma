@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,83 +8,109 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  phone     String?
-  company   String?
-  password  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  customers Customer[]
-  sales     Sale[]
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String?
+  phone           String?
+  company         String?
+  password        String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  advancePayments AdvancePayment[]
+  customers       Customer[]
+  payments        Payment[]
+  sales           Sale[]
 }
 
 model Customer {
-  id          String   @id @default(cuid())
-  name        String
-  phone       String?
-  email       String?
-  address     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  userId      String
-  
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sales       Sale[]
-  
+  id               String           @id @default(cuid())
+  name             String
+  phone            String?
+  email            String?
+  address          String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  userId           String
+  dueAmount        Float            @default(0)
+  lastPurchaseDate DateTime?
+  advanceBalance   Float            @default(0)
+  advancePayments  AdvancePayment[]
+  user             User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payments         Payment[]
+  sales            Sale[]
+
   @@index([userId])
 }
 
 model Sale {
-  id          String   @id @default(cuid())
-  invoiceNo   String   @unique
-  customerId  String
-  userId      String
-  items       Json     // Store items as JSON array
-  totalAmount Float
-  paidAmount  Float    @default(0)
-  dueAmount   Float
-  paymentType String   // "cash", "credit", "partial"
-  status      String   @default("pending") // "pending", "partial", "paid"
-  dueDate     DateTime?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // NEW DELIVERY FIELDS
-  deliveryStatus   String?   @default("pending") // "pending", "scheduled", "delivered", "partial"
-  deliveryAddress  Json?     // Store delivery address as JSON object
-  deliveryDate     DateTime?
-  saleDate         DateTime? @default(now()) // For back date entries
-  paymentMode      String?   @default("cash") // "cash", "upi", "bank_transfer", "cheque"
-  paymentReference String?
+  id                String    @id @default(cuid())
+  invoiceNo         String    @unique
+  customerId        String
+  userId            String
+  items             Json
+  totalAmount       Float
+  paidAmount        Float     @default(0)
+  dueAmount         Float
+  paymentType       String
+  status            String    @default("pending")
+  dueDate           DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
   bankTransactionId String?
-  discountType     String?   // "none", "percentage", "fixed"
-  discountValue    Float?    @default(0)
-  discountAmount   Float?    @default(0)
-  deliveryNotes    String?
-  isBackDate       Boolean?  @default(false)
-  
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payments    Payment[]
-  
+  deliveryAddress   Json?
+  deliveryDate      DateTime?
+  deliveryNotes     String?
+  deliveryStatus    String?   @default("pending")
+  discountAmount    Float?    @default(0)
+  discountType      String?
+  discountValue     Float?    @default(0)
+  isBackDate        Boolean?  @default(false)
+  paymentMode       String?   @default("cash")
+  paymentReference  String?
+  saleDate          DateTime? @default(now())
+  payments          Payment[]
+  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
   @@index([customerId])
-  @@index([deliveryStatus]) // Add index for better delivery queries
+  @@index([deliveryStatus])
 }
 
 model Payment {
-  id        String   @id @default(cuid())
-  saleId    String
-  amount    Float
-  method    String   // "cash", "upi", "bank"
-  notes     String?
-  createdAt DateTime @default(now())
-  
-  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  
+  id              String   @id @default(cuid())
+  saleId          String
+  amount          Float
+  method          String
+  notes           String?
+  createdAt       DateTime @default(now())
+  customerId      String
+  referenceNumber String?
+  userId          String
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale            Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([saleId])
+  @@index([customerId])
+  @@index([userId])
+}
+
+model AdvancePayment {
+  id          String   @id @default(cuid())
+  customerId  String
+  userId      String
+  amount      Float
+  type        String
+  description String?
+  reference   String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([customerId])
+  @@index([userId])
+  @@index([createdAt])
 }

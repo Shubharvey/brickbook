@@ -92,7 +92,7 @@ export default function CustomerList() {
       setIsLoading(true);
       const response = await fetch("/api/customers", {
         headers: {
-          Authorization: `Bearer ${token}`,
+          Authorization: `Bearer ${token}`, // FIXED: Added Authorization header
         },
       });
 

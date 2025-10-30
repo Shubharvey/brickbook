@@ -762,49 +762,128 @@ STATUS: ${safeString(sale.status).toUpperCase()}
           </TabsContent>
 
           {/* Payments Tab */}
-          {/* Payments Tab */}
           <TabsContent value="payments" className="space-y-6 pb-24 md:pb-6">
             {payments.length > 0 ? (
-              payments.map((payment) => (
-                <Card key={payment.id}>
-                  <CardContent className="p-6">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <CreditCard className="h-10 w-10 text-green-600" />
-                        <div>
-                          <p className="font-semibold">
-                            Invoice: {payment.invoiceNo}
-                          </p>
-                          <p className="text-sm text-gray-500">
-                            {safeDate(payment.createdAt)} • {payment.method}
-                          </p>
-                          {payment.referenceNumber && (
-                            <p className="text-xs text-gray-400">
-                              Ref: {payment.referenceNumber}
-                            </p>
-                          )}
-                          {payment.notes && (
-                            <p className="text-xs text-gray-500 mt-1">
-                              {payment.notes}
-                            </p>
-                          )}
-                          <p className="text-xs text-blue-600 capitalize">
-                            {payment.type?.replace("_", " ")}
-                          </p>
+              payments
+                .filter(
+                  (payment, index, self) =>
+                    // Remove duplicates based on payment ID
+                    index === self.findIndex((p) => p.id === payment.id)
+                )
+                .map((payment) => (
+                  <Card
+                    key={payment.id}
+                    className="border-l-4 border-l-green-500"
+                  >
+                    <CardContent className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-start space-x-4 flex-1">
+                          <div className="flex-shrink-0">
+                            <CreditCard className="h-10 w-10 text-green-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between mb-3">
+                              <div>
+                                <p className="font-semibold text-lg text-gray-900">
+                                  {payment.invoiceNo}
+                                </p>
+                                <div className="flex items-center space-x-4 mt-1">
+                                  <Badge
+                                    variant="outline"
+                                    className="capitalize"
+                                  >
+                                    {payment.method}
+                                  </Badge>
+                                  <Badge
+                                    variant="secondary"
+                                    className="capitalize"
+                                  >
+                                    {payment.type?.replace("_", " ") ||
+                                      "payment"}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xl font-bold text-green-600">
+                                  {formatCurrency(payment.amount)}
+                                </p>
+                              </div>
+                            </div>
+
+                            {/* Payment Details Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm bg-gray-50 p-3 rounded-lg">
+                              <div className="space-y-2">
+                                <div className="flex justify-between">
+                                  <span className="font-medium text-gray-600">
+                                    Payment Date:
+                                  </span>
+                                  <span className="text-gray-900">
+                                    {safeDate(payment.createdAt)}
+                                  </span>
+                                </div>
+                                <div className="flex justify-between">
+                                  <span className="font-medium text-gray-600">
+                                    Time:
+                                  </span>
+                                  <span className="text-gray-900">
+                                    {new Date(
+                                      payment.createdAt
+                                    ).toLocaleTimeString("en-IN", {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      hour12: true,
+                                    })}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {payment.referenceNumber && (
+                                  <div className="flex justify-between">
+                                    <span className="font-medium text-gray-600">
+                                      Reference:
+                                    </span>
+                                    <span className="text-gray-900 font-mono text-xs">
+                                      {payment.referenceNumber}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex justify-between">
+                                  <span className="font-medium text-gray-600">
+                                    Payment ID:
+                                  </span>
+                                  <span className="text-gray-900 font-mono text-xs">
+                                    {payment.id.slice(-8)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            {payment.notes && (
+                              <div className="mt-3 p-3 bg-blue-50 rounded border border-blue-200">
+                                <p className="text-sm font-medium text-blue-800 mb-1">
+                                  Payment Notes:
+                                </p>
+                                <p className="text-sm text-blue-700">
+                                  {payment.notes}
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Full timestamp for debugging */}
+                            <div className="mt-2">
+                              <p className="text-xs text-gray-400">
+                                Recorded:{" "}
+                                {new Date(payment.createdAt).toLocaleString(
+                                  "en-IN"
+                                )}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xl font-bold text-green-600">
-                          {formatCurrency(payment.amount)}
-                        </p>
-                        <Badge variant="outline" className="capitalize">
-                          {payment.method}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
+                    </CardContent>
+                  </Card>
+                ))
             ) : (
               <Card>
                 <CardContent className="text-center py-12">
