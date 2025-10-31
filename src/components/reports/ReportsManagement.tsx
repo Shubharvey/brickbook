@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,10 +12,14 @@ import {
   ShoppingCart,
   Calendar,
 } from "lucide-react";
+import SalesReport from "./SalesReport";
 
 export default function ReportsManagement() {
+  const [activeReport, setActiveReport] = useState<string | null>(null);
+
   const reports = [
     {
+      id: "sales",
       title: "Sales Report",
       description: "Detailed sales transactions and revenue analysis",
       icon: ShoppingCart,
@@ -22,6 +27,7 @@ export default function ReportsManagement() {
       period: "Monthly",
     },
     {
+      id: "customer",
       title: "Customer Report",
       description: "Customer demographics and purchase history",
       icon: Users,
@@ -29,6 +35,7 @@ export default function ReportsManagement() {
       period: "Quarterly",
     },
     {
+      id: "payment",
       title: "Payment Report",
       description: "Payment status and outstanding dues",
       icon: DollarSign,
@@ -36,6 +43,7 @@ export default function ReportsManagement() {
       period: "Weekly",
     },
     {
+      id: "profit",
       title: "Profit & Loss",
       description: "Financial performance and profitability",
       icon: TrendingUp,
@@ -43,6 +51,7 @@ export default function ReportsManagement() {
       period: "Monthly",
     },
     {
+      id: "inventory",
       title: "Inventory Report",
       description: "Stock levels and product performance",
       icon: FileText,
@@ -50,6 +59,7 @@ export default function ReportsManagement() {
       period: "Daily",
     },
     {
+      id: "tax",
       title: "Tax Report",
       description: "Tax calculations and compliance reports",
       icon: Calendar,
@@ -57,6 +67,49 @@ export default function ReportsManagement() {
       period: "Yearly",
     },
   ];
+
+  // If a report is active, show that report
+  if (activeReport === "sales") {
+    return (
+      <div>
+        <Button
+          variant="ghost"
+          onClick={() => setActiveReport(null)}
+          className="mb-4"
+        >
+          ← Back to Reports
+        </Button>
+        <SalesReport />
+      </div>
+    );
+  }
+
+  // Handle other reports when they're implemented
+  if (activeReport) {
+    return (
+      <div>
+        <Button
+          variant="ghost"
+          onClick={() => setActiveReport(null)}
+          className="mb-4"
+        >
+          ← Back to Reports
+        </Button>
+        <div className="text-center py-12">
+          <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 mb-2">
+            {reports.find((r) => r.id === activeReport)?.title}
+          </h2>
+          <p className="text-gray-600 mb-4">
+            This report is coming soon. We're working on implementing it.
+          </p>
+          <Button onClick={() => setActiveReport(null)}>
+            Return to Reports
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -86,7 +139,11 @@ export default function ReportsManagement() {
             <CardContent>
               <p className="text-sm text-gray-600 mb-4">{report.description}</p>
               <div className="flex gap-2">
-                <Button size="sm" className="flex-1">
+                <Button
+                  size="sm"
+                  className="flex-1"
+                  onClick={() => setActiveReport(report.id)}
+                >
                   <FileText className="h-4 w-4 mr-2" />
                   View
                 </Button>

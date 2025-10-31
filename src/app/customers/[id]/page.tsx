@@ -508,149 +508,148 @@ STATUS: ${safeString(sale.status).toUpperCase()}
   }
 
   return (
-    // ----- MAIN OUTER CONTAINER: Critical for mobile nav flushness -----
     <div className="min-h-screen bg-gray-50 pt-6 pb-0 md:pb-6">
       <div className="max-w-7xl mx-auto px-4">
-        {/* Header */}
+        {/* Header - Optimized */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                {customer?.name || "Customer Not Found"}
-              </h1>
-              <p className="text-gray-600 mt-1">Customer Profile</p>
+            <div className="flex-1 min-w-0">
+              {/* Customer Name with Since Date inline */}
+              <div className="flex flex-col sm:flex-row sm:items-end sm:gap-4 mb-2">
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 truncate">
+                  {customer?.name || "Customer Not Found"}
+                </h1>
+                <div className="flex items-center gap-2 text-sm text-gray-600 mt-1 sm:mt-0">
+                  <User className="h-4 w-4" />
+                  <span>Customer since {safeDate(customer?.createdAt)}</span>
+                </div>
+              </div>
+
+              {/* Phone and Email in compact row */}
+              <div className="flex flex-wrap items-center gap-4 mt-2">
+                {customer?.phone && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Phone className="h-4 w-4" />
+                    <a
+                      href={`tel:${customer.phone}`}
+                      className="hover:text-blue-600 transition-colors font-medium"
+                    >
+                      {customer.phone}
+                    </a>
+                  </div>
+                )}
+
+                {customer?.email && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Mail className="h-4 w-4" />
+                    <a
+                      href={`mailto:${customer.email}`}
+                      className="hover:text-blue-600 transition-colors truncate max-w-[200px]"
+                    >
+                      {customer.email}
+                    </a>
+                  </div>
+                )}
+              </div>
             </div>
-            <Button variant="outline" onClick={() => router.push("/customers")}>
+
+            <Button
+              variant="outline"
+              onClick={() => router.push("/customers")}
+              className="flex-shrink-0"
+            >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Customers
+              <span className="hidden sm:inline">Back to Customers</span>
+              <span className="sm:hidden">Back</span>
             </Button>
           </div>
 
-          {/* Customer Info Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-            <Card>
+          {/* Address Card - Only if address exists */}
+          {customer?.address && (
+            <Card className="mb-6">
               <CardContent className="p-4">
-                <div className="flex items-center">
-                  <User className="h-8 w-8 text-orange-600 mr-3" />
-                  <div>
-                    <p className="text-sm font-medium text-gray-600">
-                      Customer Since
+                <div className="flex items-start gap-3">
+                  <MapPin className="h-5 w-5 text-orange-600 mt-0.5 flex-shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-600 mb-1">
+                      Address
                     </p>
-                    <p className="text-lg font-semibold">
-                      {safeDate(customer?.createdAt)}
+                    <p className="text-gray-900 break-words">
+                      {customer.address}
                     </p>
                   </div>
                 </div>
               </CardContent>
             </Card>
+          )}
 
-            {customer?.phone && (
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center">
-                    <Phone className="h-8 w-8 text-orange-600 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Phone</p>
-                      <p className="text-lg font-semibold">{customer.phone}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {customer?.email && (
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center">
-                    <Mail className="h-8 w-8 text-orange-600 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">Email</p>
-                      <p className="text-lg font-semibold truncate">
-                        {customer.email}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-
-            {customer?.address && (
-              <Card>
-                <CardContent className="p-4">
-                  <div className="flex items-center">
-                    <MapPin className="h-8 w-8 text-orange-600 mr-3" />
-                    <div>
-                      <p className="text-sm font-medium text-gray-600">
-                        Address
-                      </p>
-                      <p className="text-lg font-semibold truncate">
-                        {customer.address}
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-
-          {/* Wallet Balance Card */}
+          {/* Wallet Balance Card - Optimized for mobile */}
           <Card className="mb-6 border-l-4 border-l-green-500">
-            <CardContent className="p-6">
-              <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-                <div className="flex items-center mb-4 md:mb-0">
-                  <Wallet className="h-10 w-10 text-green-600 mr-4" />
+            <CardContent className="p-4 sm:p-6">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center mb-4 sm:mb-0">
+                  <Wallet className="h-8 w-8 sm:h-10 sm:w-10 text-green-600 mr-3 sm:mr-4" />
                   <div>
-                    <h3 className="text-lg font-semibold text-gray-900">
+                    <h3 className="text-base sm:text-lg font-semibold text-gray-900">
                       Wallet Balance
                     </h3>
-                    <div className="flex items-center space-x-4 mt-1">
-                      <p className="text-2xl font-bold text-green-600">
+                    <div className="flex items-center space-x-3 mt-1">
+                      <p className="text-xl sm:text-2xl font-bold text-green-600">
                         {formatCurrency(customer?.advanceBalance || 0)}
                       </p>
-                      <Badge className="bg-green-100 text-green-800">
+                      <Badge className="bg-green-100 text-green-800 text-xs">
                         Available
                       </Badge>
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row gap-2">
+                <div className="flex flex-col xs:flex-row gap-2">
                   <Button
                     onClick={handleAddAdvance}
-                    className="bg-green-600 hover:bg-green-700"
+                    className="bg-green-600 hover:bg-green-700 text-sm"
+                    size="sm"
                   >
                     <Plus className="h-4 w-4 mr-2" />
                     Add Advance
                   </Button>
-                  <Button onClick={handleViewAdvanceHistory} variant="outline">
+                  <Button
+                    onClick={handleViewAdvanceHistory}
+                    variant="outline"
+                    size="sm"
+                  >
                     <History className="h-4 w-4 mr-2" />
-                    View History
+                    History
                   </Button>
                 </div>
               </div>
 
-              {/* Advance Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+              {/* Advance Summary - Optimized grid */}
+              <div className="grid grid-cols-2 xs:grid-cols-4 gap-3 sm:gap-4 mt-4 pt-4 border-t">
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Total Added</p>
-                  <p className="text-lg font-bold text-green-600">
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    Total Added
+                  </p>
+                  <p className="text-sm sm:text-lg font-bold text-green-600">
                     {formatCurrency(totalAdvanceAdded)}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Total Used</p>
-                  <p className="text-lg font-bold text-orange-600">
+                  <p className="text-xs sm:text-sm text-gray-600">Total Used</p>
+                  <p className="text-sm sm:text-lg font-bold text-orange-600">
                     {formatCurrency(totalAdvanceUsed)}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Current Balance</p>
-                  <p className="text-lg font-bold text-blue-600">
+                  <p className="text-xs sm:text-sm text-gray-600">
+                    Current Balance
+                  </p>
+                  <p className="text-sm sm:text-lg font-bold text-blue-600">
                     {formatCurrency(customer?.advanceBalance || 0)}
                   </p>
                 </div>
                 <div className="text-center">
-                  <p className="text-sm text-gray-600">Due Amount</p>
-                  <p className="text-lg font-bold text-red-600">
+                  <p className="text-xs sm:text-sm text-gray-600">Due Amount</p>
+                  <p className="text-sm sm:text-lg font-bold text-red-600">
                     {formatCurrency(customer?.dueAmount || 0)}
                   </p>
                 </div>
