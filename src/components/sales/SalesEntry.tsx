@@ -47,6 +47,14 @@ const DEFAULT_ITEMS = [
 // Payment modes as per your vision
 const PAYMENT_MODES = ["cash", "upi", "bank_transfer", "cheque"] as const;
 
+// NEW: Updated payment types
+const PAYMENT_TYPES = [
+  "full_cash",
+  "full_advance",
+  "advance_cash",
+  "credit",
+] as const;
+
 const CUSTOMER_TYPES = [
   "retailer",
   "contractor",
@@ -108,9 +116,9 @@ export default function SalesEntry() {
   const [items, setItems] = useState<SaleItem[]>([
     { id: "1", name: "", quantity: 1, price: 0, total: 0 },
   ]);
-  const [paymentType, setPaymentType] = useState<"cash" | "credit" | "partial">(
-    "cash"
-  );
+  // UPDATED: New payment type system
+  const [paymentType, setPaymentType] =
+    useState<(typeof PAYMENT_TYPES)[number]>("full_cash");
   const [paymentMode, setPaymentMode] =
     useState<(typeof PAYMENT_MODES)[number]>("cash");
   const [paidAmount, setPaidAmount] = useState("");
@@ -148,9 +156,8 @@ export default function SalesEntry() {
   const [paymentReference, setPaymentReference] = useState("");
   const [bankTransactionId, setBankTransactionId] = useState("");
 
-  // NEW: Advance payment fields
+  // UPDATED: Advance payment fields - simplified
   const [advancePayment, setAdvancePayment] = useState(""); // Extra amount paid as advance
-  const [useAdvance, setUseAdvance] = useState(false); // Toggle to use existing advance
   const [advanceUsed, setAdvanceUsed] = useState(""); // Amount of advance to use
   const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0); // Customer's current advance balance
 
@@ -240,9 +247,11 @@ export default function SalesEntry() {
     setCustomerSearch("");
     setShowCustomerDropdown(false);
     setCustomerAdvanceBalance(0);
-    setUseAdvance(false);
     setAdvanceUsed("");
     setAdvancePayment("");
+    // Reset payment type to default
+    setPaymentType("full_cash");
+    setPaidAmount("");
   };
 
   const handleCreateCustomer = async () => {
@@ -368,28 +377,46 @@ export default function SalesEntry() {
     return Math.max(0, subtotal - discount);
   };
 
-  // UPDATED: Calculate due with advance logic
+  // UPDATED: Calculate due with new payment type logic
   const calculateDue = () => {
     const grandTotal = calculateGrandTotal();
     const paid = parseFloat(paidAmount) || 0;
     const advance = parseFloat(advanceUsed) || 0;
-    const extraAdvance = parseFloat(advancePayment) || 0;
 
-    // Total payment = cash paid + advance used
-    const totalPayment = paid + advance;
+    // For advance_cash type, both advance and cash are used
+    if (paymentType === "advance_cash") {
+      return Math.max(0, grandTotal - (advance + paid));
+    }
 
-    return Math.max(0, grandTotal - totalPayment);
+    // For full_advance type
+    if (paymentType === "full_advance") {
+      return Math.max(0, grandTotal - advance);
+    }
+
+    // For full_cash and credit types
+    return Math.max(0, grandTotal - paid);
   };
 
-  // NEW: Calculate payment breakdown
+  // UPDATED: Calculate payment breakdown with new logic
   const calculatePaymentBreakdown = () => {
     const grandTotal = calculateGrandTotal();
     const paid = parseFloat(paidAmount) || 0;
     const advance = parseFloat(advanceUsed) || 0;
     const extraAdvance = parseFloat(advancePayment) || 0;
 
-    const totalPayment = paid + advance;
-    const due = Math.max(0, grandTotal - totalPayment);
+    let totalPayment = 0;
+    let due = 0;
+
+    if (paymentType === "advance_cash") {
+      totalPayment = paid + advance;
+      due = Math.max(0, grandTotal - totalPayment);
+    } else if (paymentType === "full_advance") {
+      totalPayment = advance;
+      due = Math.max(0, grandTotal - advance);
+    } else {
+      totalPayment = paid;
+      due = Math.max(0, grandTotal - paid);
+    }
 
     return {
       cashPaid: paid,
@@ -401,9 +428,10 @@ export default function SalesEntry() {
     };
   };
 
-  // FIXED: Improved form validation
+  // UPDATED: Improved form validation with new payment types
   const validateForm = () => {
     const newErrors: typeof errors = {};
+    const grandTotal = calculateGrandTotal();
 
     if (!selectedCustomer) {
       newErrors.customer = "Please select a customer";
@@ -414,29 +442,43 @@ export default function SalesEntry() {
       newErrors.items = "Please fill all item details with valid prices";
     }
 
-    if ((paymentType === "credit" || paymentType === "partial") && !dueDate) {
-      newErrors.dueDate = "Due date is required for credit/partial payments";
+    // Payment type specific validations
+    if (paymentType === "advance_cash") {
+      if (!advanceUsed || parseFloat(advanceUsed) <= 0) {
+        newErrors.payment = "Please enter advance amount to use";
+      }
+      if (!paidAmount || parseFloat(paidAmount) < 0) {
+        newErrors.payment = "Please enter cash amount";
+      }
+      if (parseFloat(advanceUsed) > customerAdvanceBalance) {
+        newErrors.payment = "Advance amount cannot exceed available balance";
+      }
+      const totalPayment =
+        (parseFloat(advanceUsed) || 0) + (parseFloat(paidAmount) || 0);
+      if (totalPayment < grandTotal && !dueDate) {
+        newErrors.dueDate = "Due date is required for remaining balance";
+      }
     }
 
-    if (
-      paymentType === "partial" &&
-      (!paidAmount || parseFloat(paidAmount) <= 0)
-    ) {
-      newErrors.payment = "Paid amount is required for partial payments";
+    if (paymentType === "full_advance") {
+      if (!advanceUsed || parseFloat(advanceUsed) <= 0) {
+        newErrors.payment = "Please enter advance amount to use";
+      }
+      if (parseFloat(advanceUsed) > customerAdvanceBalance) {
+        newErrors.payment = "Advance amount cannot exceed available balance";
+      }
+      if (parseFloat(advanceUsed) < grandTotal && !dueDate) {
+        newErrors.dueDate = "Due date is required for remaining balance";
+      }
+    }
+
+    if (paymentType === "credit" && !dueDate) {
+      newErrors.dueDate = "Due date is required for credit payments";
     }
 
     // Validate payment reference for non-cash payments
     if (paymentMode !== "cash" && !paymentReference && !bankTransactionId) {
       newErrors.payment = "Payment reference is required for non-cash payments";
-    }
-
-    // Validate advance usage
-    if (useAdvance && (!advanceUsed || parseFloat(advanceUsed) <= 0)) {
-      newErrors.payment = "Please enter a valid advance amount to use";
-    }
-
-    if (useAdvance && parseFloat(advanceUsed) > customerAdvanceBalance) {
-      newErrors.payment = "Advance amount cannot exceed available balance";
     }
 
     setErrors(newErrors);
@@ -581,10 +623,12 @@ export default function SalesEntry() {
             }
             
             <p><strong>Payment Type:</strong> ${
-              paymentType === "cash"
+              paymentType === "full_cash"
                 ? "Full Cash"
-                : paymentType === "partial"
-                ? "Partial"
+                : paymentType === "full_advance"
+                ? "Full Advance"
+                : paymentType === "advance_cash"
+                ? "Advance + Cash"
                 : "Credit"
             }</p>
             <p><strong>Payment Mode:</strong> ${
@@ -659,19 +703,18 @@ export default function SalesEntry() {
       const subtotal = calculateTotal();
       const discountAmount = calculateDiscount();
       const grandTotal = calculateGrandTotal();
-      let finalPaidAmount = 0;
-      let finalPaymentType = paymentType;
+      const breakdown = calculatePaymentBreakdown();
 
-      if (paymentType === "cash") {
-        finalPaidAmount = grandTotal;
-      } else if (paymentType === "partial") {
-        finalPaidAmount = parseFloat(paidAmount) || 0;
-        if (finalPaidAmount >= grandTotal) {
-          finalPaymentType = "cash";
-          finalPaidAmount = grandTotal;
-        }
-      } else if (paymentType === "credit") {
-        finalPaidAmount = parseFloat(paidAmount) || 0;
+      // Determine final payment type for backend
+      let finalPaymentType = paymentType;
+      if (paymentType === "full_cash" && breakdown.due === 0) {
+        finalPaymentType = "full_cash";
+      } else if (paymentType === "full_advance" && breakdown.due === 0) {
+        finalPaymentType = "full_cash"; // Considered as cash if fully paid by advance
+      } else if (paymentType === "advance_cash" && breakdown.due === 0) {
+        finalPaymentType = "full_cash"; // Considered as cash if fully paid
+      } else if (breakdown.due > 0) {
+        finalPaymentType = "credit";
       }
 
       const finalSaleDate =
@@ -693,15 +736,12 @@ export default function SalesEntry() {
           discountType === "none" ? null : parseFloat(discountValue) || 0,
         discountAmount: discountType === "none" ? 0 : discountAmount,
         totalAmount: grandTotal,
-        paidAmount: finalPaidAmount,
-        paymentType: finalPaymentType,
+        paidAmount: breakdown.cashPaid,
+        paymentType: paymentType, // Send the actual payment type directly
         paymentMode,
         paymentReference: paymentReference || null,
         bankTransactionId: bankTransactionId || null,
-        dueDate:
-          finalPaymentType === "credit" || finalPaymentType === "partial"
-            ? dueDate
-            : null,
+        dueDate: breakdown.due > 0 ? dueDate : null,
         notes: notes || null,
         saleDate: finalSaleDate.toISOString(),
         isBackDate,
@@ -709,10 +749,10 @@ export default function SalesEntry() {
         deliveryAddress: useDifferentDeliveryAddress ? deliveryAddress : null,
         deliveryDate: deliveryDate || null,
         deliveryStatus,
-        // NEW: Advance payment fields
+        // UPDATED: Advance payment fields
         advancePayment: parseFloat(advancePayment) || 0,
-        useAdvance: useAdvance,
         advanceUsed: parseFloat(advanceUsed) || 0,
+        originalPaymentType: paymentType, // Store original payment type for reference
       };
 
       const response = await fetch("/api/sales", {
@@ -729,7 +769,7 @@ export default function SalesEntry() {
         setSelectedCustomer("");
         setCustomerSearch("");
         setItems([{ id: "1", name: "", quantity: 1, price: 0, total: 0 }]);
-        setPaymentType("cash");
+        setPaymentType("full_cash");
         setPaymentMode("cash");
         setPaidAmount("");
         setDueDate("");
@@ -747,7 +787,6 @@ export default function SalesEntry() {
         setBankTransactionId("");
         // NEW: Reset advance fields
         setAdvancePayment("");
-        setUseAdvance(false);
         setAdvanceUsed("");
         setCustomerAdvanceBalance(0);
 
@@ -1277,69 +1316,160 @@ export default function SalesEntry() {
             </CardContent>
           </Card>
 
-          {/* NEW: Advance Payment Section */}
+          {/* UPDATED: Payment Details Section */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <DollarSign className="h-5 w-5 mr-2" />
-                Advance Payment Options
+                Payment Details
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {/* Show current advance balance when customer is selected */}
-              {selectedCustomer && customerAdvanceBalance > 0 && (
-                <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <div className="text-sm font-medium text-blue-800">
-                    💰 Advance Balance Available
-                  </div>
-                  <div className="text-lg font-bold text-blue-900">
-                    ₹{customerAdvanceBalance.toFixed(2)}
-                  </div>
-                  <div className="text-xs text-blue-700">
-                    Customer:{" "}
-                    {customers.find((c) => c.id === selectedCustomer)?.name}
-                  </div>
-                </div>
-              )}
-
-              {/* Use Advance Option */}
-              <div className="space-y-3">
+              {/* Back Date Option */}
+              <div className="space-y-2">
                 <div className="flex items-center space-x-2">
                   <input
                     type="checkbox"
-                    id="use-advance"
-                    checked={useAdvance}
-                    onChange={(e) => {
-                      setUseAdvance(e.target.checked);
-                      if (!e.target.checked) {
+                    id="back-date"
+                    checked={isBackDate}
+                    onChange={(e) => setIsBackDate(e.target.checked)}
+                    className="rounded border-gray-300"
+                  />
+                  <Label htmlFor="back-date" className="text-sm font-medium">
+                    Back Date Entry (for missed entries)
+                  </Label>
+                </div>
+                {isBackDate && (
+                  <div className="space-y-1">
+                    <Label htmlFor="sale-date">Sale Date *</Label>
+                    <Input
+                      id="sale-date"
+                      type="date"
+                      value={saleDate}
+                      onChange={(e) => setSaleDate(e.target.value)}
+                      max={new Date().toISOString().split("T")[0]}
+                      required={isBackDate}
+                      className="border-orange-300 focus:border-orange-500"
+                    />
+                    <p className="text-xs text-gray-500">
+                      Select the date when the actual sale occurred
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* UPDATED: Payment Type Selection */}
+                <div className="space-y-2">
+                  <Label htmlFor="payment-type">Payment Type *</Label>
+                  <Select
+                    value={paymentType}
+                    onValueChange={(value: (typeof PAYMENT_TYPES)[number]) => {
+                      setPaymentType(value);
+                      const grandTotal = calculateGrandTotal();
+
+                      // Reset related fields when payment type changes
+                      if (value === "full_cash") {
+                        setPaidAmount(grandTotal.toString());
+                        setAdvanceUsed("");
+                      } else if (value === "full_advance") {
+                        setPaidAmount("0");
+                        setAdvanceUsed(
+                          Math.min(
+                            grandTotal,
+                            customerAdvanceBalance
+                          ).toString()
+                        );
+                      } else if (value === "advance_cash") {
+                        setPaidAmount("0");
+                        setAdvanceUsed("0");
+                      } else if (value === "credit") {
+                        setPaidAmount("0");
                         setAdvanceUsed("");
                       }
                     }}
-                    disabled={!selectedCustomer || customerAdvanceBalance <= 0}
-                    className="rounded border-gray-300"
-                  />
-                  <Label htmlFor="use-advance" className="text-sm font-medium">
-                    Use Advance Balance for Payment
-                  </Label>
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="full_cash">
+                        Full Cash Payment
+                      </SelectItem>
+                      <SelectItem
+                        value="full_advance"
+                        disabled={customerAdvanceBalance <= 0}
+                      >
+                        Full Advance Payment{" "}
+                        {customerAdvanceBalance > 0 &&
+                          `(₹${customerAdvanceBalance.toFixed(2)} available)`}
+                      </SelectItem>
+                      <SelectItem
+                        value="advance_cash"
+                        disabled={customerAdvanceBalance <= 0}
+                      >
+                        Advance + Cash Combination
+                      </SelectItem>
+                      <SelectItem value="credit">Credit/Due Payment</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
-                {useAdvance && (
-                  <div className="space-y-2 pl-6">
-                    <Label htmlFor="advance-used">
-                      Amount to Use from Advance *
-                    </Label>
+                <div className="space-y-2">
+                  <Label htmlFor="payment-mode">Payment Mode</Label>
+                  <Select
+                    value={paymentMode}
+                    onValueChange={(value: (typeof PAYMENT_MODES)[number]) =>
+                      setPaymentMode(value)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="cash">Cash</SelectItem>
+                      <SelectItem value="upi">UPI</SelectItem>
+                      <SelectItem value="bank_transfer">
+                        Bank Transfer
+                      </SelectItem>
+                      <SelectItem value="cheque">Cheque</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* NEW: Advance + Cash Combination Fields */}
+              {paymentType === "advance_cash" && (
+                <div className="space-y-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
+                  <h4 className="font-medium text-blue-900">
+                    Advance + Cash Payment
+                  </h4>
+
+                  {/* Advance Usage */}
+                  <div className="space-y-2">
+                    <Label htmlFor="advance-used">Amount from Advance *</Label>
                     <Input
                       id="advance-used"
                       type="number"
-                      placeholder="Enter amount"
+                      placeholder="Enter amount from advance"
                       min="0"
-                      max={customerAdvanceBalance}
+                      max={Math.min(grandTotal, customerAdvanceBalance)}
                       step="0.01"
                       value={advanceUsed}
                       onChange={(e) => {
-                        const value = parseFloat(e.target.value) || 0;
-                        if (value <= customerAdvanceBalance) {
+                        const advanceAmount = parseFloat(e.target.value) || 0;
+                        const maxAllowed = Math.min(
+                          grandTotal,
+                          customerAdvanceBalance
+                        );
+
+                        if (advanceAmount <= maxAllowed) {
                           setAdvanceUsed(e.target.value);
+                          // Auto-calculate remaining cash amount
+                          const remaining = grandTotal - advanceAmount;
+                          setPaidAmount(
+                            remaining > 0 ? remaining.toString() : "0"
+                          );
                         }
                       }}
                     />
@@ -1348,18 +1478,189 @@ export default function SalesEntry() {
                         Available: ₹{customerAdvanceBalance.toFixed(2)}
                       </span>
                       <span>
-                        Remaining after use: ₹
-                        {(
-                          customerAdvanceBalance -
-                          (parseFloat(advanceUsed) || 0)
-                        ).toFixed(2)}
+                        Max usable: ₹
+                        {Math.min(grandTotal, customerAdvanceBalance).toFixed(
+                          2
+                        )}
                       </span>
                     </div>
                   </div>
-                )}
-              </div>
 
-              {/* Extra Advance Payment */}
+                  {/* Cash Payment */}
+                  <div className="space-y-2">
+                    <Label htmlFor="cash-paid">Cash Payment *</Label>
+                    <Input
+                      id="cash-paid"
+                      type="number"
+                      placeholder="Enter cash amount"
+                      min="0"
+                      step="0.01"
+                      value={paidAmount}
+                      onChange={(e) => {
+                        const cashAmount = parseFloat(e.target.value) || 0;
+                        const remaining =
+                          grandTotal - (parseFloat(advanceUsed) || 0);
+
+                        if (cashAmount <= remaining) {
+                          setPaidAmount(e.target.value);
+                        }
+                      }}
+                    />
+                    <div className="text-xs text-gray-500">
+                      Remaining after advance: ₹
+                      {(grandTotal - (parseFloat(advanceUsed) || 0)).toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* Due Date for remaining balance if any */}
+                  {parseFloat(advanceUsed) + parseFloat(paidAmount) <
+                    grandTotal && (
+                    <div className="space-y-2">
+                      <Label htmlFor="due-date">
+                        Due Date for Remaining Balance *
+                      </Label>
+                      <Input
+                        id="due-date"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        required
+                      />
+                      <div className="text-xs text-orange-600">
+                        Remaining due: ₹
+                        {(
+                          grandTotal -
+                          (parseFloat(advanceUsed) + parseFloat(paidAmount))
+                        ).toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Full Advance Payment Fields */}
+              {paymentType === "full_advance" && (
+                <div className="space-y-3 p-3 border border-green-200 rounded-lg bg-green-50">
+                  <h4 className="font-medium text-green-900">
+                    Full Advance Payment
+                  </h4>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="advance-used-full">
+                      Amount from Advance *
+                    </Label>
+                    <Input
+                      id="advance-used-full"
+                      type="number"
+                      placeholder="Enter amount from advance"
+                      min="0"
+                      max={Math.min(grandTotal, customerAdvanceBalance)}
+                      step="0.01"
+                      value={advanceUsed}
+                      onChange={(e) => {
+                        const advanceAmount = parseFloat(e.target.value) || 0;
+                        const maxAllowed = Math.min(
+                          grandTotal,
+                          customerAdvanceBalance
+                        );
+
+                        if (advanceAmount <= maxAllowed) {
+                          setAdvanceUsed(e.target.value);
+                        }
+                      }}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>
+                        Available: ₹{customerAdvanceBalance.toFixed(2)}
+                      </span>
+                      <span>Grand Total: ₹{grandTotal.toFixed(2)}</span>
+                    </div>
+                  </div>
+
+                  {/* Show remaining balance if advance is less than grand total */}
+                  {parseFloat(advanceUsed) < grandTotal && (
+                    <div className="space-y-2">
+                      <Label htmlFor="due-date-advance">
+                        Due Date for Remaining Balance *
+                      </Label>
+                      <Input
+                        id="due-date-advance"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        required
+                      />
+                      <div className="text-xs text-orange-600">
+                        Remaining due: ₹
+                        {(grandTotal - parseFloat(advanceUsed)).toFixed(2)}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Credit Payment Fields */}
+              {paymentType === "credit" && (
+                <div className="space-y-2">
+                  <Label htmlFor="due-date-credit">Due Date *</Label>
+                  <Input
+                    id="due-date-credit"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    min={new Date().toISOString().split("T")[0]}
+                    required
+                  />
+                </div>
+              )}
+
+              {/* Payment Reference Fields */}
+              {(paymentMode === "upi" ||
+                paymentMode === "bank_transfer" ||
+                paymentMode === "cheque") && (
+                <div className="space-y-3 p-3 border border-gray-200 rounded-lg bg-blue-50">
+                  <h4 className="font-medium text-gray-900">
+                    Payment Reference Details
+                  </h4>
+                  <div className="space-y-2">
+                    <Label htmlFor="payment-reference">
+                      {paymentMode === "upi"
+                        ? "UPI Transaction ID"
+                        : paymentMode === "bank_transfer"
+                        ? "Bank Transaction ID"
+                        : "Cheque Number"}{" "}
+                      *
+                    </Label>
+                    <Input
+                      id="payment-reference"
+                      placeholder={`Enter ${
+                        paymentMode === "upi"
+                          ? "UPI Transaction ID"
+                          : paymentMode === "bank_transfer"
+                          ? "Bank Transaction ID"
+                          : "Cheque Number"
+                      }`}
+                      value={
+                        paymentMode === "bank_transfer"
+                          ? bankTransactionId
+                          : paymentReference
+                      }
+                      onChange={(e) => {
+                        if (paymentMode === "bank_transfer") {
+                          setBankTransactionId(e.target.value);
+                        } else {
+                          setPaymentReference(e.target.value);
+                        }
+                      }}
+                      required
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Extra Advance Payment (Available for all payment types) */}
               <div className="space-y-2">
                 <Label htmlFor="advance-payment">
                   Extra Advance Payment (Optional)
@@ -1379,44 +1680,25 @@ export default function SalesEntry() {
                 </p>
               </div>
 
-              {/* Payment Breakdown Preview */}
-              {(useAdvance || advancePayment) && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-                  <div className="text-sm font-medium text-green-800 mb-2">
-                    Payment Breakdown
-                  </div>
-                  <div className="space-y-1 text-xs">
-                    {breakdown.advanceUsed > 0 && (
-                      <div className="flex justify-between">
-                        <span>Advance Used:</span>
-                        <span className="font-medium">
-                          -₹{breakdown.advanceUsed.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.cashPaid > 0 && (
-                      <div className="flex justify-between">
-                        <span>Cash Paid:</span>
-                        <span className="font-medium">
-                          ₹{breakdown.cashPaid.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    {breakdown.extraAdvance > 0 && (
-                      <div className="flex justify-between">
-                        <span>Extra Advance:</span>
-                        <span className="font-medium text-blue-600">
-                          +₹{breakdown.extraAdvance.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                    <div className="border-t pt-1 mt-1">
-                      <div className="flex justify-between font-medium">
-                        <span>New Advance Balance:</span>
-                        <span>₹{breakdown.newAdvanceBalance.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notes (Optional)</Label>
+                <Textarea
+                  id="notes"
+                  placeholder="Add any notes about this sale..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+              </div>
+
+              {/* Error Display */}
+              {errors.payment && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{errors.payment}</p>
+                </div>
+              )}
+              {errors.dueDate && (
+                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-sm text-red-600">{errors.dueDate}</p>
                 </div>
               )}
             </CardContent>
@@ -1554,193 +1836,6 @@ export default function SalesEntry() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Enhanced Payment Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <DollarSign className="h-5 w-5 mr-2" />
-                Payment Details
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {/* Back Date Option */}
-              <div className="space-y-2">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="back-date"
-                    checked={isBackDate}
-                    onChange={(e) => setIsBackDate(e.target.checked)}
-                    className="rounded border-gray-300"
-                  />
-                  <Label htmlFor="back-date" className="text-sm font-medium">
-                    Back Date Entry (for missed entries)
-                  </Label>
-                </div>
-                {isBackDate && (
-                  <div className="space-y-1">
-                    <Label htmlFor="sale-date">Sale Date *</Label>
-                    <Input
-                      id="sale-date"
-                      type="date"
-                      value={saleDate}
-                      onChange={(e) => setSaleDate(e.target.value)}
-                      max={new Date().toISOString().split("T")[0]}
-                      required={isBackDate}
-                      className="border-orange-300 focus:border-orange-500"
-                    />
-                    <p className="text-xs text-gray-500">
-                      Select the date when the actual sale occurred
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="payment-type">Payment Type</Label>
-                  <Select
-                    value={paymentType}
-                    onValueChange={(value: "cash" | "credit" | "partial") =>
-                      setPaymentType(value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Full Cash Payment</SelectItem>
-                      <SelectItem value="partial">Partial Payment</SelectItem>
-                      <SelectItem value="credit">Credit/Due Payment</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="payment-mode">Payment Mode</Label>
-                  <Select
-                    value={paymentMode}
-                    onValueChange={(value: (typeof PAYMENT_MODES)[number]) =>
-                      setPaymentMode(value)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="cash">Cash</SelectItem>
-                      <SelectItem value="upi">UPI</SelectItem>
-                      <SelectItem value="bank_transfer">
-                        Bank Transfer
-                      </SelectItem>
-                      <SelectItem value="cheque">Cheque</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {(paymentType === "partial" || paymentType === "credit") && (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="paid-amount">
-                      {paymentType === "partial"
-                        ? "Paid Amount *"
-                        : "Advance Amount (Optional)"}
-                    </Label>
-                    <Input
-                      id="paid-amount"
-                      type="number"
-                      placeholder="Enter amount paid"
-                      min="0"
-                      step="0.01"
-                      value={paidAmount}
-                      onChange={(e) => setPaidAmount(e.target.value)}
-                      required={paymentType === "partial"}
-                    />
-                  </div>
-
-                  {errors.payment && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded-md">
-                      <p className="text-sm text-red-600">{errors.payment}</p>
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="due-date">Due Date *</Label>
-                    <Input
-                      id="due-date"
-                      type="date"
-                      value={dueDate}
-                      onChange={(e) => setDueDate(e.target.value)}
-                      min={new Date().toISOString().split("T")[0]}
-                      required
-                    />
-                  </div>
-
-                  {errors.dueDate && (
-                    <div className="p-2 bg-red-50 border border-red-200 rounded-md">
-                      <p className="text-sm text-red-600">{errors.dueDate}</p>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {/* Payment Reference Fields */}
-              {(paymentMode === "upi" ||
-                paymentMode === "bank_transfer" ||
-                paymentMode === "cheque") && (
-                <div className="space-y-3 p-3 border border-gray-200 rounded-lg bg-blue-50">
-                  <h4 className="font-medium text-gray-900">
-                    Payment Reference Details
-                  </h4>
-                  <div className="space-y-2">
-                    <Label htmlFor="payment-reference">
-                      {paymentMode === "upi"
-                        ? "UPI Transaction ID"
-                        : paymentMode === "bank_transfer"
-                        ? "Bank Transaction ID"
-                        : "Cheque Number"}{" "}
-                      *
-                    </Label>
-                    <Input
-                      id="payment-reference"
-                      placeholder={`Enter ${
-                        paymentMode === "upi"
-                          ? "UPI Transaction ID"
-                          : paymentMode === "bank_transfer"
-                          ? "Bank Transaction ID"
-                          : "Cheque Number"
-                      }`}
-                      value={
-                        paymentMode === "bank_transfer"
-                          ? bankTransactionId
-                          : paymentReference
-                      }
-                      onChange={(e) => {
-                        if (paymentMode === "bank_transfer") {
-                          setBankTransactionId(e.target.value);
-                        } else {
-                          setPaymentReference(e.target.value);
-                        }
-                      }}
-                      required
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label htmlFor="notes">Notes (Optional)</Label>
-                <Textarea
-                  id="notes"
-                  placeholder="Add any notes about this sale..."
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                />
               </div>
             </CardContent>
           </Card>
@@ -1929,17 +2024,21 @@ export default function SalesEntry() {
                   <span>Payment Type:</span>
                   <Badge
                     variant={
-                      paymentType === "cash"
+                      paymentType === "full_cash"
                         ? "default"
-                        : paymentType === "partial"
+                        : paymentType === "full_advance"
                         ? "secondary"
-                        : "outline"
+                        : paymentType === "advance_cash"
+                        ? "outline"
+                        : "destructive"
                     }
                   >
-                    {paymentType === "cash"
+                    {paymentType === "full_cash"
                       ? "Full Cash"
-                      : paymentType === "partial"
-                      ? "Partial"
+                      : paymentType === "full_advance"
+                      ? "Full Advance"
+                      : paymentType === "advance_cash"
+                      ? "Advance + Cash"
                       : "Credit"}
                   </Badge>
                 </div>
@@ -1951,13 +2050,12 @@ export default function SalesEntry() {
                   </span>
                 </div>
 
-                {(paymentType === "partial" || paymentType === "credit") &&
-                  dueDate && (
-                    <div className="flex justify-between text-sm">
-                      <span>Due Date:</span>
-                      <span>{new Date(dueDate).toLocaleDateString()}</span>
-                    </div>
-                  )}
+                {dueDate && (
+                  <div className="flex justify-between text-sm">
+                    <span>Due Date:</span>
+                    <span>{new Date(dueDate).toLocaleDateString()}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2">

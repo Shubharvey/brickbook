@@ -36,6 +36,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log("🟢 Starting sale creation...");
+
     const authHeader = request.headers.get("authorization");
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -49,15 +51,25 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
+    console.log("📦 Received sale data:", body);
+
+    // Basic validation
+    if (!body.customerId || !body.items || !body.totalAmount) {
+      console.log("❌ Missing required fields");
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
     const {
       customerId,
       items,
       totalAmount,
-      paidAmount,
-      paymentType,
+      paidAmount = 0,
+      paymentType = "full_cash",
       dueDate,
       notes,
-      // DELIVERY FIELDS
       deliveryStatus = "pending",
       deliveryAddress,
       deliveryDate,
@@ -69,20 +81,14 @@ export async function POST(request: NextRequest) {
       discountType = "none",
       discountValue = 0,
       discountAmount = 0,
-      // NEW: Advance payment fields
-      advancePayment = 0, // Extra amount paid as advance
-      useAdvance = false, // Whether to use existing advance
-      advanceUsed = 0, // Amount of advance to use
+      advancePayment = 0,
+      advanceUsed = 0,
+      originalPaymentType,
     } = body;
 
-    if (!customerId || !items || !totalAmount) {
-      return NextResponse.json(
-        { error: "Missing required fields" },
-        { status: 400 }
-      );
-    }
+    console.log("🔍 Validating customer...");
 
-    // Get customer current advance balance
+    // Get customer
     const customer = await db.customer.findFirst({
       where: {
         id: customerId,
@@ -91,55 +97,56 @@ export async function POST(request: NextRequest) {
     });
 
     if (!customer) {
+      console.log("❌ Customer not found:", customerId);
       return NextResponse.json(
         { error: "Customer not found" },
         { status: 404 }
       );
     }
 
+    console.log("✅ Customer found:", customer.name);
+
+    // SIMPLIFIED PAYMENT LOGIC - Just use what frontend sends
+    const finalPaidAmount = parseFloat(paidAmount) || 0;
+    const finalAdvancePayment = parseFloat(advancePayment) || 0;
+    const finalAdvanceUsed = parseFloat(advanceUsed) || 0;
+    const actualPaymentType = originalPaymentType || paymentType;
+
+    console.log("💰 Payment Summary:", {
+      actualPaymentType,
+      paidAmount: finalPaidAmount,
+      advanceUsed: finalAdvanceUsed,
+      advancePayment: finalAdvancePayment,
+      customerAdvance: customer.advanceBalance,
+      totalAmount,
+    });
+
     // Validate advance usage
-    if (useAdvance && advanceUsed > customer.advanceBalance) {
+    if (finalAdvanceUsed > customer.advanceBalance) {
+      console.log("❌ Insufficient advance balance");
       return NextResponse.json(
         { error: "Insufficient advance balance" },
         { status: 400 }
       );
     }
 
-    // Calculate payment amounts with advance logic
-    let finalPaidAmount = paidAmount || 0;
-    let finalAdvancePayment = advancePayment || 0;
-    let finalAdvanceUsed = useAdvance ? advanceUsed : 0;
-
-    // If using advance, add it to paid amount
-    if (useAdvance && advanceUsed > 0) {
-      finalPaidAmount += advanceUsed;
-    }
-
     // Calculate due amount
-    const dueAmount = Math.max(0, totalAmount - finalPaidAmount);
+    const totalPayment = finalPaidAmount + finalAdvanceUsed;
+    const dueAmount = Math.max(0, totalAmount - totalPayment);
 
-    // Determine if there's extra payment that should go to advance
-    const extraPayment = Math.max(0, finalPaidAmount - totalAmount);
-    if (extraPayment > 0) {
-      finalAdvancePayment += extraPayment;
-      finalPaidAmount = totalAmount; // Cap paid amount at total
-    }
-
-    let status = "pending";
-    if (dueAmount === 0) {
-      status = "paid";
-    } else if (finalPaidAmount > 0) {
-      status = "partial";
-    }
+    console.log("🧮 Amounts calculated:", {
+      totalPayment,
+      dueAmount,
+    });
 
     // Generate invoice number
     const invoiceNo = `INV-${Date.now()}`;
-
-    // Use back date if provided, otherwise current date
     const finalSaleDate =
       isBackDate && saleDate ? new Date(saleDate) : new Date();
 
-    // Create sale transaction
+    console.log("💾 Creating sale record...");
+
+    // Create sale
     const sale = await db.sale.create({
       data: {
         invoiceNo,
@@ -149,93 +156,75 @@ export async function POST(request: NextRequest) {
         totalAmount,
         paidAmount: finalPaidAmount,
         dueAmount,
-        paymentType,
-        status,
+        paymentType: actualPaymentType,
+        status:
+          dueAmount === 0 ? "paid" : totalPayment > 0 ? "partial" : "pending",
         dueDate: dueDate ? new Date(dueDate) : null,
-        notes,
+        notes: notes || null,
         deliveryStatus,
         deliveryAddress,
         deliveryDate: deliveryDate ? new Date(deliveryDate) : null,
         saleDate: finalSaleDate,
         paymentMode,
-        paymentReference,
-        bankTransactionId,
+        paymentReference: paymentReference || null,
+        bankTransactionId: bankTransactionId || null,
         discountType: discountType === "none" ? null : discountType,
         discountValue,
         discountAmount,
         isBackDate,
-        deliveryNotes: notes,
-      },
-      include: {
-        customer: true,
+        deliveryNotes: notes || null,
       },
     });
 
-    // Handle advance transactions
-    const advanceTransactions = [];
+    console.log("✅ Sale created:", sale.id);
 
-    // 1. Create advance payment record if customer paid extra
-    if (finalAdvancePayment > 0) {
-      const advancePaymentRecord = await db.advancePayment.create({
-        data: {
-          customerId,
-          userId: decoded.id,
-          amount: finalAdvancePayment,
-          type: "ADVANCE_PAYMENT",
-          description: `Extra payment from sale ${invoiceNo}`,
-          reference: invoiceNo,
-          saleId: sale.id,
-          notes: `Extra payment of ₹${finalAdvancePayment} from sale transaction`,
-        },
-      });
-      advanceTransactions.push(advancePaymentRecord);
-    }
-
-    // 2. Create advance used record if customer used existing advance
-    if (finalAdvanceUsed > 0) {
-      const advanceUsedRecord = await db.advancePayment.create({
-        data: {
-          customerId,
-          userId: decoded.id,
-          amount: -finalAdvanceUsed, // Negative amount for usage
-          type: "ADVANCE_USED",
-          description: `Advance used for sale ${invoiceNo}`,
-          reference: invoiceNo,
-          saleId: sale.id,
-          notes: `Used ₹${finalAdvanceUsed} advance for sale payment`,
-        },
-      });
-      advanceTransactions.push(advanceUsedRecord);
-    }
-
-    // Update customer's advance balance
+    // Handle advance balance updates
     const advanceBalanceChange = finalAdvancePayment - finalAdvanceUsed;
+
     if (advanceBalanceChange !== 0) {
+      console.log("🔄 Updating customer advance balance...");
+
+      // FIXED: Removed totalLifetimeValue field
       await db.customer.update({
         where: { id: customerId },
         data: {
-          advanceBalance: customer.advanceBalance + advanceBalanceChange,
+          advanceBalance: {
+            increment: advanceBalanceChange,
+          },
+          lastPurchaseDate: new Date(),
+          // REMOVED: totalLifetimeValue field since it doesn't exist in schema
+        },
+      });
+
+      console.log("✅ Customer advance balance updated");
+    } else {
+      // Still update last purchase date even if no advance change
+      await db.customer.update({
+        where: { id: customerId },
+        data: {
           lastPurchaseDate: new Date(),
         },
       });
+      console.log("📅 Customer last purchase date updated");
     }
 
+    console.log("🎉 Sale completed successfully!");
+
     return NextResponse.json({
-      ...sale,
-      advanceTransactions,
-      advanceBalanceChange,
-      message: `Sale created successfully. ${
-        finalAdvancePayment > 0
-          ? `₹${finalAdvancePayment} added to advance. `
-          : ""
-      }${
-        finalAdvanceUsed > 0 ? `₹${finalAdvanceUsed} used from advance. ` : ""
-      }`,
+      success: true,
+      sale,
+      message: `Sale created successfully. Advance balance updated by ₹${advanceBalanceChange}`,
     });
   } catch (error: any) {
-    console.error("Sale creation error:", error);
+    console.error("❌ SALE CREATION FAILED:", error);
+    console.error("📝 Error message:", error.message);
+    console.error("🔧 Error stack:", error.stack);
+
     return NextResponse.json(
-      { error: "Failed to create sale" },
+      {
+        error: "Failed to create sale",
+        details: error.message,
+      },
       { status: 500 }
     );
   }
