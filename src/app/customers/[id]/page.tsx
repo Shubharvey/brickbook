@@ -30,10 +30,20 @@ import {
   Receipt,
   Plus,
   History,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 // Utility functions
 const safeNumber = (value: any, defaultValue = 0) => {
@@ -128,12 +138,30 @@ export default function CustomerProfilePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
+  // Add Advance Modal States
+  const [showAddAdvanceModal, setShowAddAdvanceModal] = useState(false);
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advanceDescription, setAdvanceDescription] = useState("");
+  const [advanceReference, setAdvanceReference] = useState("");
+  const [advanceNotes, setAdvanceNotes] = useState("");
+  const [isAddingAdvance, setIsAddingAdvance] = useState(false);
+  const [advanceError, setAdvanceError] = useState<string | null>(null);
+  const [advanceSuccess, setAdvanceSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     if (token && params.id) {
       fetchCustomerData();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token, params.id]);
+
+  // Clear success message
+  useEffect(() => {
+    if (advanceSuccess) {
+      const timer = setTimeout(() => setAdvanceSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [advanceSuccess]);
 
   const fetchCustomerData = async () => {
     try {
@@ -201,6 +229,66 @@ export default function CustomerProfilePage() {
     }
   };
 
+  // Add Advance Functions
+  const handleAddAdvanceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!advanceAmount || parseFloat(advanceAmount) <= 0) {
+      setAdvanceError("Please enter a valid amount");
+      return;
+    }
+
+    try {
+      setIsAddingAdvance(true);
+      setAdvanceError(null);
+
+      const response = await fetch("/api/advance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          customerId: params.id,
+          amount: parseFloat(advanceAmount),
+          description: advanceDescription || "Manual advance payment",
+          reference: advanceReference || undefined,
+          notes: advanceNotes || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setAdvanceSuccess(data.message || "Advance added successfully");
+        setShowAddAdvanceModal(false);
+        resetAdvanceForm();
+        // Refresh customer data
+        fetchCustomerData();
+      } else {
+        setAdvanceError(data.error || "Failed to add advance");
+      }
+    } catch (error) {
+      console.error("Failed to add advance:", error);
+      setAdvanceError("Failed to add advance. Please try again.");
+    } finally {
+      setIsAddingAdvance(false);
+    }
+  };
+
+  const resetAdvanceForm = () => {
+    setAdvanceAmount("");
+    setAdvanceDescription("");
+    setAdvanceReference("");
+    setAdvanceNotes("");
+    setAdvanceError(null);
+  };
+
+  const handleModalClose = () => {
+    setShowAddAdvanceModal(false);
+    resetAdvanceForm();
+  };
+
   const handleRetry = () => {
     fetchCustomerData();
   };
@@ -251,10 +339,6 @@ export default function CustomerProfilePage() {
           icon: CreditCard,
         };
     }
-  };
-
-  const handleAddAdvance = () => {
-    router.push(`/advance?customer=${customer?.id}`);
   };
 
   const handleViewAdvanceHistory = () => {
@@ -510,6 +594,16 @@ STATUS: ${safeString(sale.status).toUpperCase()}
   return (
     <div className="min-h-screen bg-gray-50 pt-6 pb-0 md:pb-6">
       <div className="max-w-7xl mx-auto px-4">
+        {/* Success Message for Advance */}
+        {advanceSuccess && (
+          <Alert className="bg-green-50 border-green-200 mb-6">
+            <AlertCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">
+              {advanceSuccess}
+            </AlertDescription>
+          </Alert>
+        )}
+
         {/* Header - Optimized */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-6">
@@ -605,7 +699,7 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                 </div>
                 <div className="flex flex-col xs:flex-row gap-2">
                   <Button
-                    onClick={handleAddAdvance}
+                    onClick={() => setShowAddAdvanceModal(true)}
                     className="bg-green-600 hover:bg-green-700 text-sm"
                     size="sm"
                   >
@@ -1117,7 +1211,7 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                       </p>
                     </div>
                     <Button
-                      onClick={handleAddAdvance}
+                      onClick={() => setShowAddAdvanceModal(true)}
                       className="bg-green-600 hover:bg-green-700"
                     >
                       <Plus className="h-4 w-4 mr-2" />
@@ -1213,7 +1307,7 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                       No advance transactions recorded for this customer
                     </p>
                     <Button
-                      onClick={handleAddAdvance}
+                      onClick={() => setShowAddAdvanceModal(true)}
                       className="bg-green-600 hover:bg-green-700"
                     >
                       <Plus className="h-4 w-4 mr-2" />
@@ -1226,6 +1320,121 @@ STATUS: ${safeString(sale.status).toUpperCase()}
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* Add Advance Modal */}
+      <Dialog open={showAddAdvanceModal} onOpenChange={handleModalClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-green-600" />
+              Add Advance Payment
+            </DialogTitle>
+            <DialogDescription>
+              Add advance amount to {customer?.name}'s wallet balance
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddAdvanceSubmit} className="space-y-4">
+            {/* Customer Info (Read-only) */}
+            <div className="space-y-2">
+              <Label>Customer</Label>
+              <div className="p-2 border border-gray-300 rounded-md bg-gray-50">
+                <p className="font-medium">{customer?.name}</p>
+                <p className="text-sm text-gray-600">
+                  Current Balance:{" "}
+                  {formatCurrency(customer?.advanceBalance || 0)}
+                </p>
+              </div>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (₹) *</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                min="1"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value)}
+                placeholder="Enter amount"
+                required
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={advanceDescription}
+                onChange={(e) => setAdvanceDescription(e.target.value)}
+                placeholder="e.g., Manual advance payment"
+              />
+            </div>
+
+            {/* Reference */}
+            <div className="space-y-2">
+              <Label htmlFor="reference">Reference Number</Label>
+              <Input
+                id="reference"
+                value={advanceReference}
+                onChange={(e) => setAdvanceReference(e.target.value)}
+                placeholder="e.g., Bank transaction ID"
+              />
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <textarea
+                id="notes"
+                value={advanceNotes}
+                onChange={(e) => setAdvanceNotes(e.target.value)}
+                placeholder="Additional notes..."
+                className="w-full p-2 border border-gray-300 rounded-md resize-none"
+                rows={3}
+              />
+            </div>
+
+            {/* Error Message */}
+            {advanceError && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{advanceError}</AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleModalClose}
+                disabled={isAddingAdvance}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isAddingAdvance}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isAddingAdvance ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Advance
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

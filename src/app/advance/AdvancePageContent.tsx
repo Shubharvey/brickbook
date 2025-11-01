@@ -26,8 +26,20 @@ import {
   ArrowDownLeft,
   Receipt,
   Filter,
+  AlertCircle,
+  X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 interface CustomerWithAdvance {
   id: string;
@@ -93,12 +105,31 @@ export default function AdvancePage() {
     "customers"
   );
 
+  // Add Advance Modal States
+  const [showAddAdvanceModal, setShowAddAdvanceModal] = useState(false);
+  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [advanceAmount, setAdvanceAmount] = useState("");
+  const [advanceDescription, setAdvanceDescription] = useState("");
+  const [advanceReference, setAdvanceReference] = useState("");
+  const [advanceNotes, setAdvanceNotes] = useState("");
+  const [isAddingAdvance, setIsAddingAdvance] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     if (token) {
       fetchAdvanceData();
       fetchAdvanceTransactions();
     }
   }, [token]);
+
+  // Clear success message after 3 seconds
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
 
   const fetchAdvanceData = async () => {
     try {
@@ -143,6 +174,68 @@ export default function AdvancePage() {
     } finally {
       setIsLoadingTransactions(false);
     }
+  };
+
+  // Add Advance Functions
+  const handleAddAdvanceSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!selectedCustomer || !advanceAmount || parseFloat(advanceAmount) <= 0) {
+      setError("Please select a customer and enter a valid amount");
+      return;
+    }
+
+    try {
+      setIsAddingAdvance(true);
+      setError(null);
+
+      const response = await fetch("/api/advance", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          customerId: selectedCustomer,
+          amount: parseFloat(advanceAmount),
+          description: advanceDescription || "Manual advance payment",
+          reference: advanceReference || undefined,
+          notes: advanceNotes || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setSuccess(data.message || "Advance added successfully");
+        setShowAddAdvanceModal(false);
+        resetAdvanceForm();
+        // Refresh data
+        fetchAdvanceData();
+        fetchAdvanceTransactions();
+      } else {
+        setError(data.error || "Failed to add advance");
+      }
+    } catch (error) {
+      console.error("Failed to add advance:", error);
+      setError("Failed to add advance. Please try again.");
+    } finally {
+      setIsAddingAdvance(false);
+    }
+  };
+
+  const resetAdvanceForm = () => {
+    setSelectedCustomer("");
+    setAdvanceAmount("");
+    setAdvanceDescription("");
+    setAdvanceReference("");
+    setAdvanceNotes("");
+    setError(null);
+  };
+
+  const handleModalClose = () => {
+    setShowAddAdvanceModal(false);
+    resetAdvanceForm();
   };
 
   const filteredCustomers = advanceData?.customers.filter((customer) =>
@@ -232,6 +325,16 @@ export default function AdvancePage() {
 
   return (
     <div className="space-y-6 pb-20 md:pb-6">
+      {/* Success Message */}
+      {success && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            {success}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -242,7 +345,10 @@ export default function AdvancePage() {
             Track customer advance payments and credits
           </p>
         </div>
-        <Button className="bg-green-600 hover:bg-green-700">
+        <Button
+          onClick={() => setShowAddAdvanceModal(true)}
+          className="bg-green-600 hover:bg-green-700"
+        >
           <Plus className="h-4 w-4 mr-2" />
           Add Advance
         </Button>
@@ -369,6 +475,15 @@ export default function AdvancePage() {
                       ? "Try a different search term"
                       : "Customers with advance payments will appear here"}
                   </p>
+                  {!searchTerm && (
+                    <Button
+                      onClick={() => setShowAddAdvanceModal(true)}
+                      className="mt-4"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add First Advance
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -456,10 +571,14 @@ export default function AdvancePage() {
                             <Button
                               size="sm"
                               className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700"
+                              onClick={() => {
+                                setSelectedCustomer(customer.id);
+                                setShowAddAdvanceModal(true);
+                              }}
                             >
                               <CreditCard className="h-4 w-4 mr-2" />
                               <span className="hidden sm:inline">
-                                Adjust Advance
+                                Add Advance
                               </span>
                             </Button>
                           </div>
@@ -535,6 +654,15 @@ export default function AdvancePage() {
                           .replace("_", " ")} transactions found`
                       : "Advance transactions will appear here"}
                   </p>
+                  {transactionFilter === "all" && (
+                    <Button
+                      onClick={() => setShowAddAdvanceModal(true)}
+                      className="mt-4"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add First Advance
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
@@ -613,6 +741,129 @@ export default function AdvancePage() {
           </div>
         </>
       )}
+
+      {/* Add Advance Modal */}
+      <Dialog open={showAddAdvanceModal} onOpenChange={handleModalClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5 text-green-600" />
+              Add Advance Payment
+            </DialogTitle>
+            <DialogDescription>
+              Add advance amount to customer's wallet balance
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handleAddAdvanceSubmit} className="space-y-4">
+            {/* Customer Selection */}
+            <div className="space-y-2">
+              <Label htmlFor="customer">Customer *</Label>
+              <select
+                id="customer"
+                value={selectedCustomer}
+                onChange={(e) => setSelectedCustomer(e.target.value)}
+                className="w-full p-2 border border-gray-300 rounded-md"
+                required
+              >
+                <option value="">Select a customer</option>
+                {advanceData?.customers.map((customer) => (
+                  <option key={customer.id} value={customer.id}>
+                    {customer.name} (Current:{" "}
+                    {formatCurrency(customer.advanceBalance)})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Amount */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount (₹) *</Label>
+              <Input
+                id="amount"
+                type="number"
+                step="0.01"
+                min="1"
+                value={advanceAmount}
+                onChange={(e) => setAdvanceAmount(e.target.value)}
+                placeholder="Enter amount"
+                required
+              />
+            </div>
+
+            {/* Description */}
+            <div className="space-y-2">
+              <Label htmlFor="description">Description</Label>
+              <Input
+                id="description"
+                value={advanceDescription}
+                onChange={(e) => setAdvanceDescription(e.target.value)}
+                placeholder="e.g., Manual advance payment"
+              />
+            </div>
+
+            {/* Reference */}
+            <div className="space-y-2">
+              <Label htmlFor="reference">Reference Number</Label>
+              <Input
+                id="reference"
+                value={advanceReference}
+                onChange={(e) => setAdvanceReference(e.target.value)}
+                placeholder="e.g., Bank transaction ID"
+              />
+            </div>
+
+            {/* Notes */}
+            <div className="space-y-2">
+              <Label htmlFor="notes">Notes</Label>
+              <textarea
+                id="notes"
+                value={advanceNotes}
+                onChange={(e) => setAdvanceNotes(e.target.value)}
+                placeholder="Additional notes..."
+                className="w-full p-2 border border-gray-300 rounded-md resize-none"
+                rows={3}
+              />
+            </div>
+
+            {/* Error Message */}
+            {error && (
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+
+            <DialogFooter className="flex flex-col sm:flex-row gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleModalClose}
+                disabled={isAddingAdvance}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isAddingAdvance}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isAddingAdvance ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Advance
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
