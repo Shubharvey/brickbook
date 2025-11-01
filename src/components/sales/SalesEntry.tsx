@@ -1161,10 +1161,11 @@ export default function SalesEntry() {
                             ?.customerType
                         }
                         {customers.find((c) => c.id === selectedCustomer)
-                          ?.dueAmount > 0 &&
-                          ` • Due: ₹${customers
-                            .find((c) => c.id === selectedCustomer)
-                            ?.dueAmount.toFixed(2)}`}
+                          ?.dueAmount ||
+                          (0 > 0 &&
+                            ` • Due: ₹${customers
+                              .find((c) => c.id === selectedCustomer)
+                              ?.dueAmount.toFixed(2)}`)}
                         {customerAdvanceBalance > 0 &&
                           ` • Advance: ₹${customerAdvanceBalance.toFixed(2)}`}
                       </div>

@@ -42,11 +42,11 @@ async function generatePaymentIntelligence(
   userId: string,
   dateRange: { start: Date; end: Date }
 ) {
-  // Get all payments with related data
+  // Get all payments within date range
   const payments = await db.payment.findMany({
     where: {
       userId: userId,
-      paymentDate: {
+      createdAt: {
         gte: dateRange.start,
         lte: dateRange.end,
       },
@@ -55,20 +55,24 @@ async function generatePaymentIntelligence(
       sale: {
         include: {
           customer: true,
+          payments: true, // Include all payments for this sale
         },
       },
     },
-    orderBy: { paymentDate: "desc" },
+    orderBy: { createdAt: "desc" },
   });
 
-  // Get all sales to calculate dues
-  const sales = await db.sale.findMany({
+  // ✅ FIXED: Get ALL sales (not filtered by date) to calculate accurate dues
+  // We need all sales to properly calculate pending dues, even if they're from previous periods
+  const allSalesWithDues = await db.sale.findMany({
     where: {
       userId: userId,
-      saleDate: {
-        gte: dateRange.start,
-        lte: dateRange.end,
-      },
+      // Only include sales that have actual dues
+      OR: [
+        { dueAmount: { gt: 0 } },
+        { status: "pending" },
+        { status: "partial" },
+      ],
     },
     include: {
       payments: true,
@@ -77,10 +81,10 @@ async function generatePaymentIntelligence(
   });
 
   // Calculate advanced payment metrics
-  const paymentMetrics = calculatePaymentMetrics(payments, sales);
-  const dueAnalysis = analyzeDues(sales);
+  const paymentMetrics = calculatePaymentMetrics(payments, allSalesWithDues);
+  const dueAnalysis = analyzeDues(allSalesWithDues);
   const cashFlowTrends = await getCashFlowTrends(userId, dateRange);
-  const topDues = identifyTopDues(sales);
+  const topDues = identifyTopDues(allSalesWithDues);
 
   return {
     summary: paymentMetrics,
@@ -98,36 +102,49 @@ function calculatePaymentMetrics(payments: any[], sales: any[]) {
     0
   );
 
-  // Calculate pending dues
+  // ✅ FIXED: Calculate pending dues from ALL sales with actual dues
   const pendingDues = sales.reduce((sum, sale) => {
-    const paidAmount = sale.payments.reduce(
-      (paid: number, payment: any) => paid + payment.amount,
-      0
-    );
-    return sum + Math.max(0, sale.totalAmount - paidAmount);
+    // Use the dueAmount field directly from the database
+    // This is the most reliable since it's calculated during sale creation
+    return sum + sale.dueAmount;
   }, 0);
 
-  // Calculate advance payments (payments without linked sales or exceeding sale amount)
+  // ✅ FIXED: Calculate advance payments correctly
   const advancePayments = payments
-    .filter((p) => !p.saleId || p.amount > (p.sale?.totalAmount || 0))
+    .filter((p) => {
+      // Payments without sales are advances
+      if (!p.saleId) return true;
+
+      // If payment has sale, check if it's an advance payment
+      const sale = sales.find((s) => s.id === p.saleId);
+      if (!sale) return true;
+
+      return false;
+    })
     .reduce((sum, p) => sum + p.amount, 0);
 
-  // Collection efficiency (collected vs total invoiced)
-  const totalInvoiced = sales.reduce((sum, sale) => sum + sale.totalAmount, 0);
+  // Collection efficiency (collected vs total amount that should be collected)
+  const totalAmountToCollect = sales.reduce(
+    (sum, sale) => sum + sale.totalAmount,
+    0
+  );
+  const totalCollected = sales.reduce((sum, sale) => sum + sale.paidAmount, 0);
   const collectionEfficiency =
-    totalInvoiced > 0 ? (totalCollections / totalInvoiced) * 100 : 0;
+    totalAmountToCollect > 0
+      ? (totalCollected / totalAmountToCollect) * 100
+      : 0;
 
-  // Average collection days (simplified)
+  // Average collection days (only for paid/partially paid sales with payments)
   const avgCollectionDays = calculateAverageCollectionDays(sales);
 
-  // Net cash flow
-  const cashFlow = totalCollections - advancePayments; // Simplified
+  // Net cash flow (collections minus advances)
+  const cashFlow = totalCollections - advancePayments;
 
   return {
     totalCollections,
     pendingDues,
     advancePayments,
-    collectionEfficiency,
+    collectionEfficiency: Math.round(collectionEfficiency * 100) / 100, // Round to 2 decimal places
     avgCollectionDays,
     cashFlow,
   };
@@ -138,11 +155,15 @@ function calculateAverageCollectionDays(sales: any[]) {
   let count = 0;
 
   sales.forEach((sale) => {
-    if (sale.payments.length > 0) {
+    // Only consider sales that have payments and are paid/partial
+    if (
+      sale.payments.length > 0 &&
+      (sale.status === "paid" || sale.status === "partial")
+    ) {
       const firstPayment = sale.payments.reduce(
         (earliest: any, payment: any) => {
           return !earliest ||
-            new Date(payment.paymentDate) < new Date(earliest.paymentDate)
+            new Date(payment.createdAt) < new Date(earliest.createdAt)
             ? payment
             : earliest;
         },
@@ -150,8 +171,8 @@ function calculateAverageCollectionDays(sales: any[]) {
       );
 
       if (firstPayment) {
-        const saleDate = new Date(sale.saleDate);
-        const paymentDate = new Date(firstPayment.paymentDate);
+        const saleDate = new Date(sale.saleDate || sale.createdAt);
+        const paymentDate = new Date(firstPayment.createdAt);
         const daysDiff = Math.floor(
           (paymentDate.getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24)
         );
@@ -174,15 +195,10 @@ function analyzeDues(sales: any[]) {
 
   return duePeriods.map((period) => {
     const dueSales = sales.filter((sale) => {
-      const paidAmount = sale.payments.reduce(
-        (paid: number, payment: any) => paid + payment.amount,
-        0
-      );
-      const dueAmount = sale.totalAmount - paidAmount;
+      // Skip sales without dues
+      if (sale.dueAmount <= 0) return false;
 
-      if (dueAmount <= 0) return false;
-
-      const saleDate = new Date(sale.saleDate);
+      const saleDate = new Date(sale.saleDate || sale.createdAt);
       const daysSinceSale = Math.floor(
         (new Date().getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24)
       );
@@ -190,26 +206,18 @@ function analyzeDues(sales: any[]) {
       if (period.period === "Current") {
         return daysSinceSale <= 0;
       } else {
-        return (
-          daysSinceSale >
-            (duePeriods[duePeriods.indexOf(period) - 1]?.maxDays || 0) &&
-          daysSinceSale <= period.maxDays
-        );
+        const prevPeriodMax =
+          duePeriods[duePeriods.indexOf(period) - 1]?.maxDays || 0;
+        return daysSinceSale > prevPeriodMax && daysSinceSale <= period.maxDays;
       }
     });
 
-    const totalAmount = dueSales.reduce((sum, sale) => {
-      const paidAmount = sale.payments.reduce(
-        (paid: number, payment: any) => paid + payment.amount,
-        0
-      );
-      return sum + (sale.totalAmount - paidAmount);
-    }, 0);
+    const totalAmount = dueSales.reduce((sum, sale) => sum + sale.dueAmount, 0);
 
     const avgDelay =
       dueSales.length > 0
         ? dueSales.reduce((sum, sale) => {
-            const saleDate = new Date(sale.saleDate);
+            const saleDate = new Date(sale.saleDate || sale.createdAt);
             const daysSinceSale = Math.floor(
               (new Date().getTime() - saleDate.getTime()) /
                 (1000 * 60 * 60 * 24)
@@ -230,28 +238,23 @@ function analyzeDues(sales: any[]) {
 function identifyTopDues(sales: any[]) {
   return sales
     .map((sale) => {
-      const paidAmount = sale.payments.reduce(
-        (paid: number, payment: any) => paid + payment.amount,
-        0
-      );
-      const dueAmount = sale.totalAmount - paidAmount;
+      // Skip sales without dues
+      if (sale.dueAmount <= 0) return null;
 
-      if (dueAmount <= 0) return null;
-
-      const saleDate = new Date(sale.saleDate);
+      const saleDate = new Date(sale.saleDate || sale.createdAt);
       const daysSinceSale = Math.floor(
         (new Date().getTime() - saleDate.getTime()) / (1000 * 60 * 60 * 24)
       );
 
       let status: "overdue" | "due_soon" | "paid" = "due_soon";
       if (daysSinceSale > 30) status = "overdue";
-      if (dueAmount === 0) status = "paid";
+      if (sale.dueAmount === 0) status = "paid";
 
       return {
         id: sale.id,
         customerName: sale.customer?.name || "Unknown Customer",
-        amount: dueAmount,
-        dueDate: sale.saleDate,
+        amount: sale.dueAmount, // Use the direct dueAmount field
+        dueDate: sale.dueDate || sale.saleDate || sale.createdAt,
         daysOverdue: Math.max(0, daysSinceSale),
         contact: sale.customer?.phone || "N/A",
         status,
@@ -266,7 +269,7 @@ function analyzePaymentMethods(payments: any[]) {
   const methodMap = new Map();
 
   payments.forEach((payment) => {
-    const method = payment.paymentMethod || "Unknown";
+    const method = payment.method || "Unknown";
     if (!methodMap.has(method)) {
       methodMap.set(method, { count: 0, amount: 0 });
     }
@@ -291,16 +294,56 @@ async function getCashFlowTrends(
   userId: string,
   dateRange: { start: Date; end: Date }
 ) {
-  // This would query your database for historical cash flow data
-  // For now, returning mock data structure
-  return [
-    { period: "Jan", incoming: 185000, outgoing: 145000, netFlow: 40000 },
-    { period: "Feb", incoming: 210000, outgoing: 168000, netFlow: 42000 },
-    { period: "Mar", incoming: 198000, outgoing: 172000, netFlow: 26000 },
-    { period: "Apr", incoming: 235000, outgoing: 189000, netFlow: 46000 },
-    { period: "May", incoming: 252000, outgoing: 201000, netFlow: 51000 },
-    { period: "Jun", incoming: 265000, outgoing: 208000, netFlow: 57000 },
-  ];
+  // Get actual payment data for cash flow trends
+  const payments = await db.payment.findMany({
+    where: {
+      userId: userId,
+      createdAt: {
+        gte: new Date(dateRange.start.getFullYear(), 0, 1), // Start of year
+        lte: dateRange.end,
+      },
+    },
+    select: {
+      amount: true,
+      createdAt: true,
+      method: true,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  // Group by month for trends
+  const monthlyData = new Map();
+
+  payments.forEach((payment) => {
+    const month = payment.createdAt.toLocaleString("default", {
+      month: "short",
+    });
+    if (!monthlyData.has(month)) {
+      monthlyData.set(month, { incoming: 0, outgoing: 0, netFlow: 0 });
+    }
+
+    const data = monthlyData.get(month);
+    data.incoming += payment.amount;
+    data.netFlow += payment.amount;
+  });
+
+  // Convert to array format
+  const cashFlowTrends = Array.from(monthlyData.entries()).map(
+    ([period, data]) => ({
+      period,
+      incoming: data.incoming,
+      outgoing: data.outgoing,
+      netFlow: data.netFlow,
+    })
+  );
+
+  return cashFlowTrends.length > 0
+    ? cashFlowTrends
+    : [
+        { period: "Jan", incoming: 0, outgoing: 0, netFlow: 0 },
+        { period: "Feb", incoming: 0, outgoing: 0, netFlow: 0 },
+        { period: "Mar", incoming: 0, outgoing: 0, netFlow: 0 },
+      ];
 }
 
 // Helper function

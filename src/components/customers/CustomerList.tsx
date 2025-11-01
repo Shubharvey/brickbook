@@ -340,15 +340,10 @@ export default function CustomerList() {
 
   // Enhanced contact import functionality
   const handleImportContacts = async () => {
-    // Check if Web Contacts API is available
-    if (!("contacts" in navigator && "select" in navigator.contacts)) {
-      // Fallback to file import if Contacts API not available
-      handleFileImport();
-      return;
-    }
-
     try {
       setError(null);
+
+      // Type assertion to fix TypeScript error
       const contacts = await (navigator as any).contacts.select(
         ["name", "email", "tel", "address"],
         { multiple: true }
@@ -369,8 +364,7 @@ export default function CustomerList() {
       }
     } catch (error) {
       console.error("Error accessing contacts:", error);
-      // Fallback to file import
-      handleFileImport();
+      setError("Could not access contacts. Please check browser support.");
     }
   };
 
