@@ -16,12 +16,43 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
+    // Get customers with their sales to calculate due amounts
     const customers = await db.customer.findMany({
       where: { userId: decoded.id },
+      include: {
+        sales: {
+          select: {
+            totalAmount: true,
+            paidAmount: true,
+            dueAmount: true,
+            status: true,
+          },
+        },
+      },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json(customers);
+    // Calculate total due amount for each customer
+    const customersWithDues = customers.map((customer) => {
+      // Calculate total due from all sales
+      const totalDueAmount = customer.sales.reduce((sum, sale) => {
+        return sum + sale.dueAmount;
+      }, 0);
+
+      return {
+        id: customer.id,
+        name: customer.name,
+        phone: customer.phone,
+        email: customer.email,
+        address: customer.address,
+        createdAt: customer.createdAt,
+        advanceBalance: customer.advanceBalance,
+        dueAmount: totalDueAmount, // ✅ Now this will be calculated
+        lastPurchaseDate: customer.lastPurchaseDate,
+      };
+    });
+
+    return NextResponse.json(customersWithDues);
   } catch (error: any) {
     console.error("Customers fetch error:", error);
     return NextResponse.json(
