@@ -91,9 +91,11 @@ export async function POST(request: NextRequest) {
       where: {
         userId: decoded.id,
         OR: [
-          { name: { equals: name, mode: "insensitive" } },
+          { name: { equals: name, mode: "insensitive" as const } },
           ...(phone ? [{ phone }] : []),
-          ...(email ? [{ email: { equals: email, mode: "insensitive" } }] : []),
+          ...(email
+            ? [{ email: { equals: email, mode: "insensitive" as const } }]
+            : []),
         ],
       },
     });
