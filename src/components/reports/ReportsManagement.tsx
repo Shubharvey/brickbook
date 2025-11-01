@@ -1,85 +1,99 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import {
-  FileText,
-  Download,
-  TrendingUp,
-  Users,
-  DollarSign,
-  ShoppingCart,
-  Calendar,
-} from "lucide-react";
+import BusinessSnapshot from "./_sections/BusinessSnapshot";
+import InsightsPanel from "./_sections/InsightPanel";
+import TargetTracking from "./_sections/TargetTracking";
+import ReportsGrid from "./_sections/ReportsGrid";
 import SalesReport from "./SalesReport";
+import CustomerReport from "./CustomerReport"; // ✅ ADD THIS IMPORT
+import PaymentReport from "./PaymentReport"; // ✅ ADD THIS IMPORT
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 
 export default function ReportsManagement() {
   const [activeReport, setActiveReport] = useState<string | null>(null);
 
-  const reports = [
-    {
-      id: "sales",
-      title: "Sales Report",
-      description: "Detailed sales transactions and revenue analysis",
-      icon: ShoppingCart,
-      color: "bg-blue-500",
-      period: "Monthly",
-    },
-    {
-      id: "customer",
-      title: "Customer Report",
-      description: "Customer demographics and purchase history",
-      icon: Users,
-      color: "bg-green-500",
-      period: "Quarterly",
-    },
-    {
-      id: "payment",
-      title: "Payment Report",
-      description: "Payment status and outstanding dues",
-      icon: DollarSign,
-      color: "bg-red-500",
-      period: "Weekly",
-    },
-    {
-      id: "profit",
-      title: "Profit & Loss",
-      description: "Financial performance and profitability",
-      icon: TrendingUp,
-      color: "bg-purple-500",
-      period: "Monthly",
-    },
-    {
-      id: "inventory",
-      title: "Inventory Report",
-      description: "Stock levels and product performance",
-      icon: FileText,
-      color: "bg-orange-500",
-      period: "Daily",
-    },
-    {
-      id: "tax",
-      title: "Tax Report",
-      description: "Tax calculations and compliance reports",
-      icon: Calendar,
-      color: "bg-indigo-500",
-      period: "Yearly",
-    },
-  ];
-
-  // If a report is active, show that report
+  // ✅ Drill-down view for individual reports
   if (activeReport === "sales") {
     return (
-      <div>
-        <Button
-          variant="ghost"
-          onClick={() => setActiveReport(null)}
-          className="mb-4"
-        >
-          ← Back to Reports
-        </Button>
+      <div className="space-y-6 pb-10">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            onClick={() => setActiveReport(null)}
+            className="h-9 w-9 p-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Sales Intelligence
+            </h1>
+            <p className="text-gray-600">
+              Advanced analytics for revenue optimization & growth strategy
+            </p>
+          </div>
+        </div>
+
         <SalesReport />
+      </div>
+    );
+  }
+
+  // ✅ ADD Customer Report View
+  if (activeReport === "customer") {
+    return (
+      <div className="space-y-6 pb-10">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            onClick={() => setActiveReport(null)}
+            className="h-9 w-9 p-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Customer Intelligence
+            </h1>
+            <p className="text-gray-600">
+              Advanced customer analytics for retention and growth optimization
+            </p>
+          </div>
+        </div>
+
+        <CustomerReport />
+      </div>
+    );
+  }
+
+  // ✅ ADD Payment Report View
+  if (activeReport === "payment") {
+    return (
+      <div className="space-y-6 pb-10">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            onClick={() => setActiveReport(null)}
+            className="h-9 w-9 p-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              Payment Intelligence
+            </h1>
+            <p className="text-gray-600">
+              Cash flow analysis and collection efficiency optimization
+            </p>
+          </div>
+        </div>
+
+        <PaymentReport />
       </div>
     );
   }
@@ -87,123 +101,67 @@ export default function ReportsManagement() {
   // Handle other reports when they're implemented
   if (activeReport) {
     return (
-      <div>
-        <Button
-          variant="ghost"
-          onClick={() => setActiveReport(null)}
-          className="mb-4"
-        >
-          ← Back to Reports
-        </Button>
-        <div className="text-center py-12">
-          <FileText className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-900 mb-2">
-            {reports.find((r) => r.id === activeReport)?.title}
-          </h2>
-          <p className="text-gray-600 mb-4">
-            This report is coming soon. We're working on implementing it.
-          </p>
-          <Button onClick={() => setActiveReport(null)}>
-            Return to Reports
+      <div className="space-y-6 pb-10">
+        <div className="flex items-center gap-4">
+          <Button
+            variant="ghost"
+            onClick={() => setActiveReport(null)}
+            className="h-9 w-9 p-0"
+          >
+            <ArrowLeft className="h-4 w-4" />
           </Button>
+
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {activeReport.charAt(0).toUpperCase() + activeReport.slice(1)}{" "}
+              Report
+            </h1>
+            <p className="text-gray-600">
+              This report is coming soon. We're working on implementing it.
+            </p>
+          </div>
+        </div>
+
+        <div className="text-center py-12">
+          <div className="max-w-md mx-auto">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <span className="text-2xl">📊</span>
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Report Coming Soon
+            </h3>
+            <p className="text-gray-600 mb-6">
+              We're working hard to implement the {activeReport} report. This
+              feature will be available in the next update.
+            </p>
+            <Button onClick={() => setActiveReport(null)}>
+              Return to Reports Dashboard
+            </Button>
+          </div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Reports</h1>
-        <p className="text-gray-600">Generate and download business reports</p>
+    <div className="space-y-10 pb-10">
+      <header className="space-y-1">
+        <h1 className="text-3xl font-bold tracking-tight text-gray-900">
+          Business Intelligence
+        </h1>
+        <p className="text-lg text-gray-600">
+          Data-driven insights for growth, profitability & financial clarity
+        </p>
+      </header>
+
+      <BusinessSnapshot />
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <InsightsPanel />
+        <TargetTracking />
       </div>
 
-      {/* Report Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {reports.map((report, index) => (
-          <Card key={index} className="hover:shadow-md transition-shadow">
-            <CardHeader>
-              <div className="flex items-center space-x-3">
-                <div
-                  className={`w-12 h-12 rounded-lg ${report.color} flex items-center justify-center`}
-                >
-                  <report.icon className="h-6 w-6 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-lg">{report.title}</CardTitle>
-                  <p className="text-sm text-gray-500">{report.period}</p>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <p className="text-sm text-gray-600 mb-4">{report.description}</p>
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  className="flex-1"
-                  onClick={() => setActiveReport(report.id)}
-                >
-                  <FileText className="h-4 w-4 mr-2" />
-                  View
-                </Button>
-                <Button size="sm" variant="outline">
-                  <Download className="h-4 w-4 mr-2" />
-                  Export
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <FileText className="h-8 w-8 text-blue-500" />
-              <div>
-                <p className="text-sm text-gray-600">Total Reports</p>
-                <p className="text-2xl font-bold text-gray-900">24</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Download className="h-8 w-8 text-green-500" />
-              <div>
-                <p className="text-sm text-gray-600">Downloaded</p>
-                <p className="text-2xl font-bold text-gray-900">156</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-8 w-8 text-purple-500" />
-              <div>
-                <p className="text-sm text-gray-600">This Month</p>
-                <p className="text-2xl font-bold text-gray-900">8</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="h-8 w-8 text-orange-500" />
-              <div>
-                <p className="text-sm text-gray-600">Growth</p>
-                <p className="text-2xl font-bold text-gray-900">+12%</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      <ReportsGrid setActiveReport={setActiveReport} />
     </div>
   );
 }
