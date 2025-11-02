@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,9 @@ import {
   DollarSign,
   TrendingUp,
   TrendingDown,
+  Sparkles,
+  Zap,
+  Star,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -46,9 +50,10 @@ interface Customer {
   email?: string;
   address?: string;
   createdAt: string;
-  advanceBalance: number; // Added advance balance
+  advanceBalance: number;
   dueAmount: number;
   lastPurchaseDate?: string;
+  loyaltyPoints?: number;
 }
 
 interface ContactData {
@@ -95,6 +100,11 @@ export default function CustomerList() {
     highestAdvance: 0,
     totalDue: 0,
   });
+
+  // Animation states
+  const [showSparkle, setShowSparkle] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (token) {
@@ -155,19 +165,23 @@ export default function CustomerList() {
   };
 
   const getWalletBadgeVariant = (balance: number) => {
-    if (balance > 50000) return "bg-green-100 text-green-800 border-green-200";
-    if (balance > 10000) return "bg-blue-100 text-blue-800 border-blue-200";
+    if (balance > 50000)
+      return "bg-gradient-to-r from-emerald-500 to-teal-500 text-white";
+    if (balance > 10000)
+      return "bg-gradient-to-r from-blue-500 to-cyan-500 text-white";
     if (balance > 0)
-      return "bg-emerald-100 text-emerald-800 border-emerald-200";
-    return "bg-gray-100 text-gray-800 border-gray-200";
+      return "bg-gradient-to-r from-cyan-400 to-sky-500 text-white";
+    return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-700";
   };
 
   const getDueBadgeVariant = (amount: number) => {
-    if (amount > 50000) return "bg-red-100 text-red-800 border-red-200";
+    if (amount > 50000)
+      return "bg-gradient-to-r from-rose-500 to-pink-500 text-white";
     if (amount > 10000)
-      return "bg-orange-100 text-orange-800 border-orange-200";
-    if (amount > 0) return "bg-yellow-100 text-yellow-800 border-yellow-200";
-    return "bg-gray-100 text-gray-800 border-gray-200";
+      return "bg-gradient-to-r from-orange-500 to-amber-500 text-white";
+    if (amount > 0)
+      return "bg-gradient-to-r from-amber-400 to-yellow-500 text-white";
+    return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-700";
   };
 
   const handleAddCustomer = async (e: React.FormEvent) => {
@@ -218,6 +232,8 @@ export default function CustomerList() {
         setNewCustomer({ name: "", phone: "", email: "", address: "" });
         setShowAddForm(false);
         setSuccess("Customer added successfully");
+        setShowSparkle(true);
+        setTimeout(() => setShowSparkle(false), 2000);
       } else {
         setError(data.error || "Failed to add customer");
       }
@@ -229,7 +245,7 @@ export default function CustomerList() {
     }
   };
 
-  const handleEditCustomer = (customer: Customer) => {
+  const handleEditCustomer = (customer: Customer, index: number) => {
     setEditingCustomer(customer.id);
     setEditForm({
       name: customer.name,
@@ -238,6 +254,7 @@ export default function CustomerList() {
       address: customer.address || "",
     });
     setError(null);
+    setHighlightIndex(index);
   };
 
   const handleUpdateCustomer = async (customerId: string) => {
@@ -273,6 +290,7 @@ export default function CustomerList() {
         setEditingCustomer(null);
         setEditForm({ name: "", phone: "", email: "", address: "" });
         setSuccess("Customer updated successfully");
+        setHighlightIndex(null);
       } else {
         setError(data.error || "Failed to update customer");
       }
@@ -286,7 +304,8 @@ export default function CustomerList() {
 
   const handleDeleteCustomer = async (
     customerId: string,
-    customerName: string
+    customerName: string,
+    index: number
   ) => {
     if (
       !confirm(
@@ -312,6 +331,8 @@ export default function CustomerList() {
       if (response.ok) {
         await fetchCustomers();
         setSuccess("Customer deleted successfully");
+        setHighlightIndex(index);
+        setTimeout(() => setHighlightIndex(null), 1000);
       } else {
         setError(data.error || "Failed to delete customer");
       }
@@ -325,6 +346,7 @@ export default function CustomerList() {
     setEditingCustomer(null);
     setEditForm({ name: "", phone: "", email: "", address: "" });
     setError(null);
+    setHighlightIndex(null);
   };
 
   const handleCustomerClick = (customer: Customer) => {
@@ -338,12 +360,9 @@ export default function CustomerList() {
     router.push(`/advance?customer=${customer.id}`);
   };
 
-  // Enhanced contact import functionality
   const handleImportContacts = async () => {
     try {
       setError(null);
-
-      // Type assertion to fix TypeScript error
       const contacts = await (navigator as any).contacts.select(
         ["name", "email", "tel", "address"],
         { multiple: true }
@@ -435,7 +454,6 @@ export default function CustomerList() {
     }
   };
 
-  // Bulk import selected contacts
   const handleBulkImport = async () => {
     if (selectedContacts.length === 0) return;
 
@@ -448,13 +466,11 @@ export default function CustomerList() {
     for (let i = 0; i < selectedContacts.length; i++) {
       const contact = selectedContacts[i];
 
-      // Skip if no name
       if (!contact.name || contact.name === "Unknown Contact") {
         skippedCount++;
         continue;
       }
 
-      // Check for duplicates
       const isDuplicate = customers.some(
         (customer) =>
           customer.name.toLowerCase() === contact.name.toLowerCase() ||
@@ -523,6 +539,36 @@ export default function CustomerList() {
     }
   }, [success]);
 
+  // Sparkle effect component
+  const SparkleEffect = () => (
+    <div className="fixed inset-0 pointer-events-none z-50">
+      {[...Array(15)].map((_, i) => (
+        <motion.div
+          key={i}
+          className="absolute text-yellow-400"
+          initial={{
+            x: Math.random() * window.innerWidth,
+            y: Math.random() * window.innerHeight,
+            opacity: 0,
+            scale: 0,
+          }}
+          animate={{
+            y: [null, -100],
+            opacity: [0, 1, 0],
+            scale: [0, 1, 0],
+            rotate: [0, 360],
+          }}
+          transition={{
+            duration: 1.5,
+            delay: Math.random() * 0.5,
+          }}
+        >
+          <Sparkles className="h-6 w-6" />
+        </motion.div>
+      ))}
+    </div>
+  );
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -539,464 +585,648 @@ export default function CustomerList() {
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+    <div className="space-y-6 relative" ref={containerRef}>
+      {/* Sparkle Animation */}
+      <AnimatePresence>{showSparkle && <SparkleEffect />}</AnimatePresence>
+
+      {/* Header with floating animation */}
+      <motion.div
+        className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
         <div className="space-y-1">
-          <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-          <p className="text-gray-600">Manage your customer database</p>
+          <motion.h1
+            className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-700 bg-clip-text text-transparent"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            Customer Management
+          </motion.h1>
+          <motion.p
+            className="text-gray-600"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.4 }}
+          >
+            Manage your customer relationships
+          </motion.p>
         </div>
-        <div className="flex flex-col sm:flex-row gap-2">
+        <motion.div
+          className="flex flex-col sm:flex-row gap-2"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6 }}
+        >
           <Button
             onClick={() => setShowAddForm(true)}
-            className="bg-orange-600 hover:bg-orange-700"
+            className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
             disabled={isSubmitting}
           >
-            <Plus className="h-4 w-4 mr-2" />
+            <motion.div
+              whileHover={{ rotate: 90 }}
+              transition={{ duration: 0.3 }}
+            >
+              <Plus className="h-4 w-4 mr-2" />
+            </motion.div>
             Add Customer
           </Button>
           <Button
             onClick={handleImportContacts}
             variant="outline"
+            className="border-gray-300 text-gray-700 hover:bg-gray-50 shadow hover:shadow-md transition-all duration-300"
             disabled={isSubmitting}
           >
             <Upload className="h-4 w-4 mr-2" />
             Import Contacts
           </Button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
-      {/* Wallet Summary Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Wallet className="h-6 w-6 md:h-8 md:w-8 text-green-500" />
-              <div>
-                <p className="text-xs md:text-sm text-gray-600">
-                  Total Advance
-                </p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(walletStats.totalAdvance)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Users className="h-6 w-6 md:h-8 md:w-8 text-blue-500" />
-              <div>
-                <p className="text-xs md:text-sm text-gray-600">With Advance</p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {walletStats.customersWithAdvance}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-purple-500" />
-              <div>
-                <p className="text-xs md:text-sm text-gray-600">
-                  Highest Advance
-                </p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(walletStats.highestAdvance)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <TrendingDown className="h-6 w-6 md:h-8 md:w-8 text-red-500" />
-              <div>
-                <p className="text-xs md:text-sm text-gray-600">Total Due</p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(walletStats.totalDue)}
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+      {/* Wallet Summary Stats with staggered animation */}
+      <motion.div
+        className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4"
+        initial="hidden"
+        animate="visible"
+        variants={{
+          hidden: { opacity: 0 },
+          visible: {
+            opacity: 1,
+            transition: {
+              staggerChildren: 0.1,
+            },
+          },
+        }}
+      >
+        {[
+          {
+            icon: Wallet,
+            label: "Total Advance",
+            value: formatCurrency(walletStats.totalAdvance),
+            color: "from-emerald-500 to-teal-500",
+          },
+          {
+            icon: Users,
+            label: "With Advance",
+            value: walletStats.customersWithAdvance,
+            color: "from-blue-500 to-cyan-500",
+          },
+          {
+            icon: TrendingUp,
+            label: "Highest Advance",
+            value: formatCurrency(walletStats.highestAdvance),
+            color: "from-purple-500 to-indigo-500",
+          },
+          {
+            icon: TrendingDown,
+            label: "Total Due",
+            value: formatCurrency(walletStats.totalDue),
+            color: "from-rose-500 to-pink-500",
+          },
+        ].map((stat, index) => (
+          <motion.div
+            key={index}
+            variants={{
+              hidden: { opacity: 0, y: 20 },
+              visible: { opacity: 1, y: 0 },
+            }}
+            whileHover={{ y: -5 }}
+            transition={{ type: "spring", stiffness: 300 }}
+          >
+            <Card className="min-h-[100px] border border-gray-200 shadow-md hover:shadow-lg transition-all duration-300 bg-gradient-to-br from-white to-gray-50">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-3">
+                  <div
+                    className={`p-2 bg-gradient-to-r ${stat.color} rounded-lg shadow`}
+                  >
+                    <stat.icon className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-600">{stat.label}</p>
+                    <p className="text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
+                      {stat.value}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        ))}
+      </motion.div>
 
-      {/* Search */}
-      <div className="relative">
+      {/* Search with pulse animation */}
+      <motion.div
+        className="relative"
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.3 }}
+      >
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
         <Input
           placeholder="Search customers by name, phone, email, advance, or due amount..."
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
+          className="pl-10 border-gray-300 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 shadow-sm"
         />
-      </div>
+        {searchTerm && (
+          <motion.div
+            className="absolute right-3 top-1/2 transform -translate-y-1/2"
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            exit={{ scale: 0 }}
+          >
+            <Zap className="h-4 w-4 text-amber-500" />
+          </motion.div>
+        )}
+      </motion.div>
 
-      {/* Success Message */}
-      {success && (
-        <Alert className="bg-green-50 border-green-200">
-          <AlertCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">
-            {success}
-          </AlertDescription>
-        </Alert>
-      )}
+      {/* Success Message with floating animation */}
+      <AnimatePresence>
+        {success && (
+          <motion.div
+            initial={{ opacity: 0, x: 100 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 100 }}
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          >
+            <Alert className="bg-emerald-50 border-emerald-200 shadow-lg">
+              <AlertCircle className="h-4 w-4 text-emerald-600" />
+              <AlertDescription className="text-emerald-800">
+                {success}
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Error Message */}
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+      {/* Error Message with shake animation */}
+      <AnimatePresence>
+        {error && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{
+              opacity: 1,
+              y: 0,
+              transition: { type: "spring", stiffness: 500, damping: 30 },
+            }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <Alert
+              variant="destructive"
+              className="bg-rose-50 border-rose-200 shadow-lg"
+            >
+              <AlertCircle className="h-4 w-4 text-rose-600" />
+              <AlertDescription className="text-rose-800">
+                {error}
+              </AlertDescription>
+            </Alert>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Add Customer Form */}
-      {showAddForm && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Add New Customer</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleAddCustomer} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={newCustomer.name}
-                    onChange={(e) =>
-                      setNewCustomer((prev) => ({
-                        ...prev,
-                        name: e.target.value,
-                      }))
-                    }
-                    required
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input
-                    id="phone"
-                    value={newCustomer.phone}
-                    onChange={(e) =>
-                      setNewCustomer((prev) => ({
-                        ...prev,
-                        phone: e.target.value,
-                      }))
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={newCustomer.email}
-                    onChange={(e) =>
-                      setNewCustomer((prev) => ({
-                        ...prev,
-                        email: e.target.value,
-                      }))
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={newCustomer.address}
-                    onChange={(e) =>
-                      setNewCustomer((prev) => ({
-                        ...prev,
-                        address: e.target.value,
-                      }))
-                    }
-                    disabled={isSubmitting}
-                  />
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? "Adding..." : "Add Customer"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    setShowAddForm(false);
-                    setError(null);
-                    setNewCustomer({
-                      name: "",
-                      phone: "",
-                      email: "",
-                      address: "",
-                    });
-                  }}
-                  disabled={isSubmitting}
-                >
-                  Cancel
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Customer List */}
-      <div className="space-y-4">
-        {filteredCustomers.length === 0 ? (
-          <Card>
-            <CardContent className="text-center py-12">
-              <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                {searchTerm ? "No customers found" : "No customers yet"}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                {searchTerm
-                  ? "Try a different search term"
-                  : "Add your first customer to get started"}
-              </p>
-              {!searchTerm && (
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  disabled={isSubmitting}
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add First Customer
-                </Button>
-              )}
-            </CardContent>
-          </Card>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredCustomers.map((customer) => (
-              <Card
-                key={customer.id}
-                className={`cursor-pointer hover:shadow-md transition-shadow ${
-                  editingCustomer === customer.id
-                    ? "ring-2 ring-orange-500"
-                    : ""
-                }`}
-                onClick={() => handleCustomerClick(customer)}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
-                        <Users className="h-5 w-5 text-orange-600" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        {editingCustomer === customer.id ? (
-                          <Input
-                            value={editForm.name}
-                            onChange={(e) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                name: e.target.value,
-                              }))
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-8 text-sm font-semibold"
-                            disabled={isSubmitting}
-                          />
-                        ) : (
-                          <h3 className="font-semibold text-gray-900 truncate">
-                            {customer.name}
-                          </h3>
-                        )}
-                        <p className="text-sm text-gray-500">
-                          Since{" "}
-                          {new Date(customer.createdAt).toLocaleDateString()}
-                        </p>
-                      </div>
+      {/* Add Customer Form with slide-in animation */}
+      <AnimatePresence>
+        {showAddForm && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            <Card className="border border-gray-200 shadow-lg">
+              <CardHeader>
+                <CardTitle className="text-gray-900">
+                  Add New Customer
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAddCustomer} className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="name" className="text-gray-700">
+                        Name *
+                      </Label>
+                      <Input
+                        id="name"
+                        value={newCustomer.name}
+                        onChange={(e) =>
+                          setNewCustomer((prev) => ({
+                            ...prev,
+                            name: e.target.value,
+                          }))
+                        }
+                        required
+                        disabled={isSubmitting}
+                        className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      />
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone" className="text-gray-700">
+                        Phone
+                      </Label>
+                      <Input
+                        id="phone"
+                        value={newCustomer.phone}
+                        onChange={(e) =>
+                          setNewCustomer((prev) => ({
+                            ...prev,
+                            phone: e.target.value,
+                          }))
+                        }
+                        disabled={isSubmitting}
+                        className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-gray-700">
+                        Email
+                      </Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={newCustomer.email}
+                        onChange={(e) =>
+                          setNewCustomer((prev) => ({
+                            ...prev,
+                            email: e.target.value,
+                          }))
+                        }
+                        disabled={isSubmitting}
+                        className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="address" className="text-gray-700">
+                        Address
+                      </Label>
+                      <Input
+                        id="address"
+                        value={newCustomer.address}
+                        onChange={(e) =>
+                          setNewCustomer((prev) => ({
+                            ...prev,
+                            address: e.target.value,
+                          }))
+                        }
+                        disabled={isSubmitting}
+                        className="border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
                     <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCustomerClick(customer);
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                    >
+                      {isSubmitting ? "Adding..." : "Add Customer"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setShowAddForm(false);
+                        setError(null);
+                        setNewCustomer({
+                          name: "",
+                          phone: "",
+                          email: "",
+                          address: "",
+                        });
                       }}
                       disabled={isSubmitting}
+                      className="border-gray-300 text-gray-700 hover:bg-gray-50"
                     >
-                      <Eye className="h-4 w-4" />
+                      Cancel
                     </Button>
                   </div>
+                </form>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-                  {/* Wallet and Due Balance */}
-                  <div className="flex flex-wrap gap-2 mt-3">
-                    <Badge
-                      className={`${getWalletBadgeVariant(
-                        customer.advanceBalance
-                      )} text-xs cursor-pointer hover:shadow-sm transition-shadow`}
-                      onClick={(e) => handleWalletClick(customer, e)}
-                    >
-                      <Wallet className="h-3 w-3 mr-1" />
-                      Advance: {formatCurrency(customer.advanceBalance)}
-                    </Badge>
-                    {customer.dueAmount > 0 && (
-                      <Badge
-                        className={`${getDueBadgeVariant(
-                          customer.dueAmount
-                        )} text-xs`}
+      {/* Customer List with staggered animations */}
+      <div className="space-y-4">
+        {filteredCustomers.length === 0 ? (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+          >
+            <Card className="border border-gray-200 shadow-sm">
+              <CardContent className="text-center py-12">
+                <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  {searchTerm ? "No customers found" : "No customers yet"}
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  {searchTerm
+                    ? "Try a different search term"
+                    : "Add your first customer to get started"}
+                </p>
+                {!searchTerm && (
+                  <Button
+                    onClick={() => setShowAddForm(true)}
+                    disabled={isSubmitting}
+                    className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-md hover:shadow-lg transition-all duration-300"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add First Customer
+                  </Button>
+                )}
+              </CardContent>
+            </Card>
+          </motion.div>
+        ) : (
+          <motion.div
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+            layout
+          >
+            <AnimatePresence>
+              {filteredCustomers.map((customer, index) => (
+                <motion.div
+                  key={customer.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{
+                    opacity: 1,
+                    scale: 1,
+                    transition: {
+                      type: "spring",
+                      stiffness: 300,
+                      damping: 20,
+                      delay: index * 0.05,
+                    },
+                  }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  whileHover={{
+                    y: -5,
+                    transition: { duration: 0.2 },
+                  }}
+                  className={`relative ${
+                    highlightIndex === index ? "z-10" : ""
+                  }`}
+                >
+                  <Card
+                    className={`border border-gray-200 shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer overflow-hidden
+                      ${
+                        editingCustomer === customer.id
+                          ? "ring-2 ring-blue-500 border-blue-500"
+                          : ""
+                      } ${
+                      highlightIndex === index ? "ring-4 ring-yellow-400" : ""
+                    }`}
+                    onClick={() => handleCustomerClick(customer)}
+                  >
+                    {/* Loyalty indicator */}
+                    {customer.loyaltyPoints && customer.loyaltyPoints > 100 && (
+                      <motion.div
+                        className="absolute top-2 right-2"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        whileHover={{ rotate: 20 }}
                       >
-                        <DollarSign className="h-3 w-3 mr-1" />
-                        Due: {formatCurrency(customer.dueAmount)}
-                      </Badge>
+                        <Star className="h-5 w-5 text-yellow-400 fill-current" />
+                      </motion.div>
                     )}
-                  </div>
 
-                  <div className="mt-3 space-y-2">
-                    {editingCustomer === customer.id ? (
-                      <>
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Phone className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
-                          <Input
-                            value={editForm.phone}
-                            onChange={(e) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                phone: e.target.value,
-                              }))
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-6 text-sm flex-1"
-                            placeholder="Phone"
-                            disabled={isSubmitting}
-                          />
-                        </div>
-                        <div className="flex items-center text-sm text-gray-600">
-                          <Mail className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
-                          <Input
-                            value={editForm.email}
-                            onChange={(e) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                email: e.target.value,
-                              }))
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-6 text-sm flex-1"
-                            placeholder="Email"
-                            disabled={isSubmitting}
-                          />
-                        </div>
-                        <div className="flex items-center text-sm text-gray-600">
-                          <MapPin className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
-                          <Input
-                            value={editForm.address}
-                            onChange={(e) =>
-                              setEditForm((prev) => ({
-                                ...prev,
-                                address: e.target.value,
-                              }))
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className="h-6 text-sm flex-1"
-                            placeholder="Address"
-                            disabled={isSubmitting}
-                          />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {customer.phone && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Phone className="h-3 w-3 mr-2 text-gray-400" />
-                            <span className="truncate">{customer.phone}</span>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center space-x-3">
+                          <motion.div
+                            className="w-10 h-10 bg-gradient-to-br from-blue-100 to-indigo-100 rounded-full flex items-center justify-center"
+                            whileHover={{ scale: 1.1 }}
+                            transition={{ type: "spring", stiffness: 400 }}
+                          >
+                            <Users className="h-5 w-5 text-blue-600" />
+                          </motion.div>
+                          <div className="min-w-0 flex-1">
+                            {editingCustomer === customer.id ? (
+                              <Input
+                                value={editForm.name}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    name: e.target.value,
+                                  }))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-8 text-sm font-semibold border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                                disabled={isSubmitting}
+                              />
+                            ) : (
+                              <h3 className="font-semibold text-gray-900 truncate">
+                                {customer.name}
+                              </h3>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">
+                              Since{" "}
+                              {new Date(
+                                customer.createdAt
+                              ).toLocaleDateString()}
+                            </p>
                           </div>
-                        )}
-                        {customer.email && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <Mail className="h-3 w-3 mr-2 text-gray-400" />
-                            <span className="truncate">{customer.email}</span>
-                          </div>
-                        )}
-                        {customer.address && (
-                          <div className="flex items-center text-sm text-gray-600">
-                            <MapPin className="h-3 w-3 mr-2 text-gray-400" />
-                            <span className="truncate">{customer.address}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleCustomerClick(customer);
+                          }}
+                          disabled={isSubmitting}
+                          className="text-gray-500 hover:text-gray-700 hover:bg-gray-100"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </div>
 
-                  {/* Quick Actions */}
-                  <div className="flex items-center justify-between mt-4 pt-3 border-t">
-                    <Badge variant="secondary" className="text-xs">
-                      ID: {customer.id.slice(-6).toUpperCase()}
-                    </Badge>
-                    <div className="flex space-x-1">
-                      {editingCustomer === customer.id ? (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleUpdateCustomer(customer.id);
-                            }}
-                            disabled={isSubmitting}
+                      {/* Wallet and Due Balance */}
+                      <div className="flex flex-wrap gap-2 mt-3">
+                        <Badge
+                          className={`${getWalletBadgeVariant(
+                            customer.advanceBalance
+                          )} text-xs font-medium border cursor-pointer hover:shadow-md transition-all duration-200`}
+                          onClick={(e) => handleWalletClick(customer, e)}
+                        >
+                          <Wallet className="h-3 w-3 mr-1" />
+                          Advance: {formatCurrency(customer.advanceBalance)}
+                        </Badge>
+                        {customer.dueAmount > 0 && (
+                          <Badge
+                            className={`${getDueBadgeVariant(
+                              customer.dueAmount
+                            )} text-xs font-medium border`}
                           >
-                            <Save className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              cancelEdit();
-                            }}
-                            disabled={isSubmitting}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </>
-                      ) : (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleEditCustomer(customer);
-                            }}
-                            disabled={isSubmitting}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteCustomer(customer.id, customer.name);
-                            }}
-                            disabled={isSubmitting}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            Due: {formatCurrency(customer.dueAmount)}
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-3 space-y-2">
+                        {editingCustomer === customer.id ? (
+                          <>
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Phone className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
+                              <Input
+                                value={editForm.phone}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    phone: e.target.value,
+                                  }))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-6 text-sm flex-1 border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Phone"
+                                disabled={isSubmitting}
+                              />
+                            </div>
+                            <div className="flex items-center text-sm text-gray-600">
+                              <Mail className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
+                              <Input
+                                value={editForm.email}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    email: e.target.value,
+                                  }))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-6 text-sm flex-1 border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Email"
+                                disabled={isSubmitting}
+                              />
+                            </div>
+                            <div className="flex items-center text-sm text-gray-600">
+                              <MapPin className="h-3 w-3 mr-2 text-gray-400 shrink-0" />
+                              <Input
+                                value={editForm.address}
+                                onChange={(e) =>
+                                  setEditForm((prev) => ({
+                                    ...prev,
+                                    address: e.target.value,
+                                  }))
+                                }
+                                onClick={(e) => e.stopPropagation()}
+                                className="h-6 text-sm flex-1 border-gray-300 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Address"
+                                disabled={isSubmitting}
+                              />
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {customer.phone && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <Phone className="h-3 w-3 mr-2 text-gray-400" />
+                                <span className="truncate">
+                                  {customer.phone}
+                                </span>
+                              </div>
+                            )}
+                            {customer.email && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <Mail className="h-3 w-3 mr-2 text-gray-400" />
+                                <span className="truncate">
+                                  {customer.email}
+                                </span>
+                              </div>
+                            )}
+                            {customer.address && (
+                              <div className="flex items-center text-sm text-gray-600">
+                                <MapPin className="h-3 w-3 mr-2 text-gray-400" />
+                                <span className="truncate">
+                                  {customer.address}
+                                </span>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      {/* Quick Actions */}
+                      <div className="flex items-center justify-between mt-4 pt-3 border-t border-gray-100">
+                        <Badge
+                          variant="secondary"
+                          className="text-xs bg-gray-100 text-gray-700"
+                        >
+                          ID: {customer.id.slice(-6).toUpperCase()}
+                        </Badge>
+                        <div className="flex space-x-1">
+                          {editingCustomer === customer.id ? (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleUpdateCustomer(customer.id);
+                                }}
+                                disabled={isSubmitting}
+                              >
+                                <Save className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  cancelEdit();
+                                }}
+                                disabled={isSubmitting}
+                              >
+                                <X className="h-3 w-3" />
+                              </Button>
+                            </>
+                          ) : (
+                            <>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditCustomer(customer, index);
+                                }}
+                                disabled={isSubmitting}
+                              >
+                                <Edit className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-rose-600 hover:text-rose-700 hover:bg-rose-50"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteCustomer(
+                                    customer.id,
+                                    customer.name,
+                                    index
+                                  );
+                                }}
+                                disabled={isSubmitting}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+          </motion.div>
         )}
       </div>
 
@@ -1004,11 +1234,11 @@ export default function CustomerList() {
       <Dialog open={showImportDialog} onOpenChange={setShowImportDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 text-gray-900">
               <Contact className="h-5 w-5 text-blue-600" />
               Import Contacts
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-600">
               Select contacts to import. Duplicates will be skipped
               automatically.
             </DialogDescription>
@@ -1016,32 +1246,38 @@ export default function CustomerList() {
 
           <div className="max-h-60 overflow-y-auto space-y-3">
             {selectedContacts.map((contact, index) => (
-              <div
+              <motion.div
                 key={index}
-                className="flex items-center space-x-3 p-2 border rounded-lg"
+                className="flex items-center space-x-3 p-3 border border-gray-200 rounded-lg hover:bg-gray-50"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                whileHover={{ scale: 1.02 }}
               >
-                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
-                  <Contact className="h-4 w-4 text-blue-600" />
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Contact className="h-5 w-5 text-blue-600" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{contact.name}</p>
+                  <p className="font-medium text-sm text-gray-900 truncate">
+                    {contact.name}
+                  </p>
                   {contact.phones[0] && (
-                    <p className="text-xs text-gray-600 flex items-center gap-1">
+                    <p className="text-xs text-gray-600 flex items-center gap-1 mt-1">
                       <Smartphone className="h-3 w-3" />
                       {contact.phones[0]}
                     </p>
                   )}
                   {contact.emails[0] && (
-                    <p className="text-xs text-gray-600 truncate">
+                    <p className="text-xs text-gray-600 truncate mt-1">
                       {contact.emails[0]}
                     </p>
                   )}
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
 
-          <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -1049,17 +1285,28 @@ export default function CustomerList() {
                 setSelectedContacts([]);
               }}
               disabled={isImporting}
+              className="border-gray-300 text-gray-700 hover:bg-gray-50"
             >
               Cancel
             </Button>
             <Button
               onClick={handleBulkImport}
               disabled={isImporting || selectedContacts.length === 0}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white shadow-md hover:shadow-lg transition-all duration-300"
             >
               {isImporting ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  <motion.div
+                    animate={{ rotate: 360 }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      ease: "linear",
+                    }}
+                    className="h-4 w-4 mr-2"
+                  >
+                    <Zap className="h-4 w-4" />
+                  </motion.div>
                   Importing... ({Math.round(importProgress)}%)
                 </>
               ) : (

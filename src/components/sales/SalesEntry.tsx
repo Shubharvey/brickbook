@@ -27,8 +27,16 @@ import {
   Truck,
   User,
   X,
+  Calendar,
+  Package,
+  CreditCard,
+  Wallet,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 // Updated item names as per requirements
 const DEFAULT_ITEMS = [
@@ -47,9 +55,10 @@ const DEFAULT_ITEMS = [
 // Payment modes as per your vision
 const PAYMENT_MODES = ["cash", "upi", "bank_transfer", "cheque"] as const;
 
-// NEW: Updated payment types
+// UPDATED: Add partial_cash to payment types
 const PAYMENT_TYPES = [
   "full_cash",
+  "partial_cash", // NEW: Partial payment option
   "full_advance",
   "advance_cash",
   "credit",
@@ -83,7 +92,7 @@ interface Customer {
   dueAmount: number;
   lastPurchaseDate?: string;
   averageMonthlyPurchase: number;
-  advanceBalance: number; // Added advance balance
+  advanceBalance: number;
 }
 
 interface SaleItem {
@@ -137,6 +146,7 @@ export default function SalesEntry() {
     payment?: string;
     dueDate?: string;
   }>({});
+  const [success, setSuccess] = useState<string | null>(null);
 
   // NEW: Delivery management
   const [deliveryAddress, setDeliveryAddress] = useState({
@@ -157,19 +167,41 @@ export default function SalesEntry() {
   const [bankTransactionId, setBankTransactionId] = useState("");
 
   // UPDATED: Advance payment fields - simplified
-  const [advancePayment, setAdvancePayment] = useState(""); // Extra amount paid as advance
-  const [advanceUsed, setAdvanceUsed] = useState(""); // Amount of advance to use
-  const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0); // Customer's current advance balance
+  const [advancePayment, setAdvancePayment] = useState("");
+  const [advanceUsed, setAdvanceUsed] = useState("");
+  const [customerAdvanceBalance, setCustomerAdvanceBalance] = useState(0);
 
   // FIXED: Better ref management for dropdown
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Sales summary stats
+  const [salesStats, setSalesStats] = useState({
+    totalItems: 0,
+    subtotal: 0,
+    discount: 0,
+    grandTotal: 0,
+  });
 
   useEffect(() => {
     if (token) {
       fetchCustomers();
     }
   }, [token]);
+
+  useEffect(() => {
+    // Update sales stats when items change
+    const subtotal = calculateTotal();
+    const discountAmount = calculateDiscount();
+    const grandTotal = calculateGrandTotal();
+
+    setSalesStats({
+      totalItems: items.filter((item) => item.name).length,
+      subtotal,
+      discount: discountAmount,
+      grandTotal,
+    });
+  }, [items, discountType, discountValue]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -220,7 +252,6 @@ export default function SalesEntry() {
     );
   }, [customers, customerSearch]);
 
-  // FIXED: Improved customer selection logic with advance balance
   const handleCustomerSelect = (customerId: string) => {
     const customer = customers.find((c) => c.id === customerId);
     if (customer) {
@@ -229,7 +260,6 @@ export default function SalesEntry() {
       setShowCustomerDropdown(false);
       setCustomerAdvanceBalance(customer.advanceBalance || 0);
 
-      // Auto-fill delivery address with customer's address
       if (!useDifferentDeliveryAddress) {
         setDeliveryAddress({
           street: customer.street || "",
@@ -241,7 +271,6 @@ export default function SalesEntry() {
     }
   };
 
-  // FIXED: Clear customer selection
   const clearCustomerSelection = () => {
     setSelectedCustomer("");
     setCustomerSearch("");
@@ -249,14 +278,14 @@ export default function SalesEntry() {
     setCustomerAdvanceBalance(0);
     setAdvanceUsed("");
     setAdvancePayment("");
-    // Reset payment type to default
     setPaymentType("full_cash");
     setPaidAmount("");
   };
 
   const handleCreateCustomer = async () => {
     if (!newCustomer.name.trim()) {
-      alert("Please enter customer name");
+      setSuccess(null);
+      setErrors({ ...errors, customer: "Please enter customer name" });
       return;
     }
 
@@ -306,14 +335,17 @@ export default function SalesEntry() {
         });
         setShowNewCustomerForm(false);
         setShowCustomerDropdown(false);
-        alert("Customer created successfully!");
+        setSuccess("Customer created successfully!");
       } else {
         const errorData = await response.json();
-        alert(errorData.error || "Failed to create customer");
+        setErrors({
+          ...errors,
+          customer: errorData.error || "Failed to create customer",
+        });
       }
     } catch (error) {
       console.error("Failed to create customer:", error);
-      alert("Failed to create customer");
+      setErrors({ ...errors, customer: "Failed to create customer" });
     } finally {
       setIsCreatingCustomer(false);
     }
@@ -383,21 +415,18 @@ export default function SalesEntry() {
     const paid = parseFloat(paidAmount) || 0;
     const advance = parseFloat(advanceUsed) || 0;
 
-    // For advance_cash type, both advance and cash are used
     if (paymentType === "advance_cash") {
       return Math.max(0, grandTotal - (advance + paid));
     }
 
-    // For full_advance type
     if (paymentType === "full_advance") {
       return Math.max(0, grandTotal - advance);
     }
 
-    // For full_cash and credit types
     return Math.max(0, grandTotal - paid);
   };
 
-  // UPDATED: Calculate payment breakdown with new logic
+  // UPDATED: Calculate payment breakdown with partial_cash
   const calculatePaymentBreakdown = () => {
     const grandTotal = calculateGrandTotal();
     const paid = parseFloat(paidAmount) || 0;
@@ -407,7 +436,10 @@ export default function SalesEntry() {
     let totalPayment = 0;
     let due = 0;
 
-    if (paymentType === "advance_cash") {
+    if (paymentType === "partial_cash") {
+      totalPayment = paid; // Only cash payment, no advance
+      due = Math.max(0, grandTotal - paid);
+    } else if (paymentType === "advance_cash") {
       totalPayment = paid + advance;
       due = Math.max(0, grandTotal - totalPayment);
     } else if (paymentType === "full_advance") {
@@ -428,7 +460,7 @@ export default function SalesEntry() {
     };
   };
 
-  // UPDATED: Improved form validation with new payment types
+  // UPDATED: Improved form validation with partial_cash
   const validateForm = () => {
     const newErrors: typeof errors = {};
     const grandTotal = calculateGrandTotal();
@@ -443,6 +475,19 @@ export default function SalesEntry() {
     }
 
     // Payment type specific validations
+    if (paymentType === "partial_cash") {
+      if (!paidAmount || parseFloat(paidAmount) <= 0) {
+        newErrors.payment = "Please enter amount paid now";
+      }
+      if (parseFloat(paidAmount) >= grandTotal) {
+        newErrors.payment =
+          "Paid amount must be less than grand total for partial payment";
+      }
+      if (!dueDate) {
+        newErrors.dueDate = "Due date is required for remaining balance";
+      }
+    }
+
     if (paymentType === "advance_cash") {
       if (!advanceUsed || parseFloat(advanceUsed) <= 0) {
         newErrors.payment = "Please enter advance amount to use";
@@ -487,11 +532,13 @@ export default function SalesEntry() {
 
   const handlePrintBill = () => {
     if (!validateForm()) {
-      alert("Please complete the sale details before printing");
+      setErrors({
+        ...errors,
+        payment: "Please complete the sale details before printing",
+      });
       return;
     }
 
-    // Compute totals for print output
     const subtotal = calculateTotal();
     const discountAmount = calculateDiscount();
     const grandTotal = calculateGrandTotal();
@@ -625,6 +672,8 @@ export default function SalesEntry() {
             <p><strong>Payment Type:</strong> ${
               paymentType === "full_cash"
                 ? "Full Cash"
+                : paymentType === "partial_cash"
+                ? "Partial Cash"
                 : paymentType === "full_advance"
                 ? "Full Advance"
                 : paymentType === "advance_cash"
@@ -689,12 +738,15 @@ export default function SalesEntry() {
 
   const handleSaveSale = async () => {
     if (!validateForm()) {
-      alert("Please fix the errors before saving");
+      setErrors({ ...errors, payment: "Please fix the errors before saving" });
       return;
     }
 
     if (isBackDate && !saleDate) {
-      alert("Please select a sale date for back date entry");
+      setErrors({
+        ...errors,
+        payment: "Please select a sale date for back date entry",
+      });
       return;
     }
 
@@ -710,9 +762,9 @@ export default function SalesEntry() {
       if (paymentType === "full_cash" && breakdown.due === 0) {
         finalPaymentType = "full_cash";
       } else if (paymentType === "full_advance" && breakdown.due === 0) {
-        finalPaymentType = "full_cash"; // Considered as cash if fully paid by advance
+        finalPaymentType = "full_cash";
       } else if (paymentType === "advance_cash" && breakdown.due === 0) {
-        finalPaymentType = "full_cash"; // Considered as cash if fully paid
+        finalPaymentType = "full_cash";
       } else if (breakdown.due > 0) {
         finalPaymentType = "credit";
       }
@@ -737,7 +789,7 @@ export default function SalesEntry() {
         discountAmount: discountType === "none" ? 0 : discountAmount,
         totalAmount: grandTotal,
         paidAmount: breakdown.cashPaid,
-        paymentType: paymentType, // Send the actual payment type directly
+        paymentType: paymentType,
         paymentMode,
         paymentReference: paymentReference || null,
         bankTransactionId: bankTransactionId || null,
@@ -745,14 +797,12 @@ export default function SalesEntry() {
         notes: notes || null,
         saleDate: finalSaleDate.toISOString(),
         isBackDate,
-        // NEW: Delivery information
         deliveryAddress: useDifferentDeliveryAddress ? deliveryAddress : null,
         deliveryDate: deliveryDate || null,
         deliveryStatus,
-        // UPDATED: Advance payment fields
         advancePayment: parseFloat(advancePayment) || 0,
         advanceUsed: parseFloat(advanceUsed) || 0,
-        originalPaymentType: paymentType, // Store original payment type for reference
+        originalPaymentType: paymentType,
       };
 
       const response = await fetch("/api/sales", {
@@ -785,19 +835,20 @@ export default function SalesEntry() {
         setDeliveryStatus("pending");
         setPaymentReference("");
         setBankTransactionId("");
-        // NEW: Reset advance fields
         setAdvancePayment("");
         setAdvanceUsed("");
         setCustomerAdvanceBalance(0);
-
-        alert("Sale saved successfully!");
+        setSuccess("Sale saved successfully!");
       } else {
         const errorData = await response.json();
-        alert(errorData.error || "Failed to save sale");
+        setErrors({
+          ...errors,
+          payment: errorData.error || "Failed to save sale",
+        });
       }
     } catch (error) {
       console.error("Failed to save sale:", error);
-      alert("Failed to save sale");
+      setErrors({ ...errors, payment: "Failed to save sale" });
     } finally {
       setIsLoading(false);
     }
@@ -809,24 +860,113 @@ export default function SalesEntry() {
   const due = calculateDue();
   const breakdown = calculatePaymentBreakdown();
 
+  // Format currency function
+  const formatCurrency = (amount: number) => {
+    return `₹${amount.toLocaleString("en-IN")}`;
+  };
+
+  // Get badge variants
+  const getPaymentBadgeVariant = (type: string) => {
+    switch (type) {
+      case "full_cash":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "partial_cash":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "full_advance":
+        return "bg-purple-100 text-purple-800 border-purple-200";
+      case "advance_cash":
+        return "bg-indigo-100 text-indigo-800 border-indigo-200";
+      case "credit":
+        return "bg-orange-100 text-orange-800 border-orange-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+        <div className="space-y-1">
           <h1 className="text-2xl font-bold text-gray-900">New Sale</h1>
           <p className="text-gray-600">Create a new sales transaction</p>
         </div>
       </div>
 
+      {/* Success Message */}
+      {success && (
+        <Alert className="bg-green-50 border-green-200">
+          <AlertCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">
+            {success}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Sales Summary Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <Card className="min-h-[100px]">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <Package className="h-6 w-6 md:h-8 md:w-8 text-blue-500" />
+                  <div>
+                    <p className="text-xs md:text-sm text-gray-600">Items</p>
+                    <p className="text-lg md:text-2xl font-bold text-gray-900">
+                      {salesStats.totalItems}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="min-h-[100px]">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="h-6 w-6 md:h-8 md:w-8 text-green-500" />
+                  <div>
+                    <p className="text-xs md:text-sm text-gray-600">Subtotal</p>
+                    <p className="text-lg md:text-2xl font-bold text-gray-900">
+                      {formatCurrency(salesStats.subtotal)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="min-h-[100px]">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <TrendingDown className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
+                  <div>
+                    <p className="text-xs md:text-sm text-gray-600">Discount</p>
+                    <p className="text-lg md:text-2xl font-bold text-gray-900">
+                      -{formatCurrency(salesStats.discount)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="min-h-[100px]">
+              <CardContent className="p-4">
+                <div className="flex items-center space-x-2">
+                  <DollarSign className="h-6 w-6 md:h-8 md:w-8 text-purple-500" />
+                  <div>
+                    <p className="text-xs md:text-sm text-gray-600">Total</p>
+                    <p className="text-lg md:text-2xl font-bold text-gray-900">
+                      {formatCurrency(salesStats.grandTotal)}
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Customer Selection */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <User className="h-5 w-5 mr-2" />
+                <User className="h-5 w-5 mr-2 text-blue-600" />
                 Customer Information
               </CardTitle>
             </CardHeader>
@@ -931,9 +1071,10 @@ export default function SalesEntry() {
               </div>
 
               {errors.customer && (
-                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{errors.customer}</p>
-                </div>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors.customer}</AlertDescription>
+                </Alert>
               )}
 
               <Button
@@ -1189,7 +1330,7 @@ export default function SalesEntry() {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center">
-                  <Receipt className="h-5 w-5 mr-2" />
+                  <Package className="h-5 w-5 mr-2 text-orange-600" />
                   Sale Items
                 </span>
                 <Button onClick={addItem} size="sm" variant="outline">
@@ -1202,7 +1343,7 @@ export default function SalesEntry() {
               {items.map((item) => (
                 <div
                   key={item.id}
-                  className="flex items-center gap-2 p-3 border rounded-lg bg-white"
+                  className="flex items-center gap-2 p-3 border rounded-lg bg-white hover:shadow-sm transition-shadow"
                 >
                   <div className="flex-1 grid grid-cols-1 md:grid-cols-4 gap-4">
                     {/* Item Name */}
@@ -1310,9 +1451,10 @@ export default function SalesEntry() {
               ))}
 
               {errors.items && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{errors.items}</p>
-                </div>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors.items}</AlertDescription>
+                </Alert>
               )}
             </CardContent>
           </Card>
@@ -1321,7 +1463,7 @@ export default function SalesEntry() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <DollarSign className="h-5 w-5 mr-2" />
+                <CreditCard className="h-5 w-5 mr-2 text-purple-600" />
                 Payment Details
               </CardTitle>
             </CardHeader>
@@ -1373,6 +1515,10 @@ export default function SalesEntry() {
                       if (value === "full_cash") {
                         setPaidAmount(grandTotal.toString());
                         setAdvanceUsed("");
+                      } else if (value === "partial_cash") {
+                        // NEW: Set paid amount to 0 for partial payment, let user enter
+                        setPaidAmount("0");
+                        setAdvanceUsed("");
                       } else if (value === "full_advance") {
                         setPaidAmount("0");
                         setAdvanceUsed(
@@ -1397,6 +1543,10 @@ export default function SalesEntry() {
                       <SelectItem value="full_cash">
                         Full Cash Payment
                       </SelectItem>
+                      <SelectItem value="partial_cash">
+                        Partial Cash Payment
+                      </SelectItem>{" "}
+                      {/* NEW */}
                       <SelectItem
                         value="full_advance"
                         disabled={customerAdvanceBalance <= 0}
@@ -1439,7 +1589,70 @@ export default function SalesEntry() {
                 </div>
               </div>
 
-              {/* NEW: Advance + Cash Combination Fields */}
+              {/* NEW: Partial Cash Payment Fields */}
+              {paymentType === "partial_cash" && (
+                <div className="space-y-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
+                  <h4 className="font-medium text-blue-900">
+                    Partial Cash Payment
+                  </h4>
+
+                  {/* Amount Paid Now */}
+                  <div className="space-y-2">
+                    <Label htmlFor="paid-amount-partial">
+                      Amount Paid Now *
+                    </Label>
+                    <Input
+                      id="paid-amount-partial"
+                      type="number"
+                      placeholder="Enter amount paid now"
+                      min="0"
+                      max={grandTotal}
+                      step="0.01"
+                      value={paidAmount}
+                      onChange={(e) => {
+                        const paid = parseFloat(e.target.value) || 0;
+                        if (paid <= grandTotal) {
+                          setPaidAmount(e.target.value);
+                        }
+                      }}
+                    />
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Grand Total: ₹{grandTotal.toFixed(2)}</span>
+                      <span>
+                        Remaining: ₹
+                        {(grandTotal - (parseFloat(paidAmount) || 0)).toFixed(
+                          2
+                        )}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Due Date for remaining amount */}
+                  {parseFloat(paidAmount) < grandTotal && (
+                    <div className="space-y-2">
+                      <Label htmlFor="due-date-partial">
+                        Due Date for Remaining Amount *
+                      </Label>
+                      <Input
+                        id="due-date-partial"
+                        type="date"
+                        value={dueDate}
+                        onChange={(e) => setDueDate(e.target.value)}
+                        min={new Date().toISOString().split("T")[0]}
+                        required
+                      />
+                      <div className="text-xs text-orange-600">
+                        Remaining due: ₹
+                        {(grandTotal - (parseFloat(paidAmount) || 0)).toFixed(
+                          2
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Advance + Cash Combination Fields */}
               {paymentType === "advance_cash" && (
                 <div className="space-y-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
                   <h4 className="font-medium text-blue-900">
@@ -1693,14 +1906,16 @@ export default function SalesEntry() {
 
               {/* Error Display */}
               {errors.payment && (
-                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{errors.payment}</p>
-                </div>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors.payment}</AlertDescription>
+                </Alert>
               )}
               {errors.dueDate && (
-                <div className="p-2 bg-red-50 border border-red-200 rounded-md">
-                  <p className="text-sm text-red-600">{errors.dueDate}</p>
-                </div>
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{errors.dueDate}</AlertDescription>
+                </Alert>
               )}
             </CardContent>
           </Card>
@@ -1709,7 +1924,7 @@ export default function SalesEntry() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Truck className="h-5 w-5 mr-2" />
+                <Truck className="h-5 w-5 mr-2 text-indigo-600" />
                 Delivery Information
               </CardTitle>
             </CardHeader>
@@ -1846,20 +2061,28 @@ export default function SalesEntry() {
         <div className="space-y-6">
           <Card className="sticky top-6">
             <CardHeader>
-              <CardTitle>Order Summary</CardTitle>
+              <CardTitle className="flex items-center">
+                <Receipt className="h-5 w-5 mr-2 text-purple-600" />
+                Order Summary
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Back Date Indicator */}
               {isBackDate && (
                 <div className="p-3 bg-orange-50 border border-orange-200 rounded-md">
-                  <div className="text-sm font-medium text-orange-800">
-                    📅 Back Date Entry
-                  </div>
-                  <div className="text-xs text-orange-700">
-                    Sale Date:{" "}
-                    {saleDate
-                      ? new Date(saleDate).toLocaleDateString()
-                      : "Not selected"}
+                  <div className="flex items-center space-x-2">
+                    <Calendar className="h-4 w-4 text-orange-600" />
+                    <div>
+                      <div className="text-sm font-medium text-orange-800">
+                        Back Date Entry
+                      </div>
+                      <div className="text-xs text-orange-700">
+                        Sale Date:{" "}
+                        {saleDate
+                          ? new Date(saleDate).toLocaleDateString()
+                          : "Not selected"}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1867,32 +2090,42 @@ export default function SalesEntry() {
               {/* Delivery Info in Summary */}
               {(useDifferentDeliveryAddress || deliveryDate) && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
-                  <div className="text-sm font-medium text-blue-800">
-                    🚚 Delivery Information
+                  <div className="flex items-center space-x-2">
+                    <Truck className="h-4 w-4 text-blue-600" />
+                    <div>
+                      <div className="text-sm font-medium text-blue-800">
+                        Delivery Information
+                      </div>
+                      {deliveryDate && (
+                        <div className="text-xs text-blue-700">
+                          Date: {new Date(deliveryDate).toLocaleDateString()}
+                        </div>
+                      )}
+                      {deliveryStatus !== "pending" && (
+                        <div className="text-xs text-blue-700">
+                          Status:{" "}
+                          {deliveryStatus.charAt(0).toUpperCase() +
+                            deliveryStatus.slice(1)}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  {deliveryDate && (
-                    <div className="text-xs text-blue-700">
-                      Date: {new Date(deliveryDate).toLocaleDateString()}
-                    </div>
-                  )}
-                  {deliveryStatus !== "pending" && (
-                    <div className="text-xs text-blue-700">
-                      Status:{" "}
-                      {deliveryStatus.charAt(0).toUpperCase() +
-                        deliveryStatus.slice(1)}
-                    </div>
-                  )}
                 </div>
               )}
 
               {/* Advance Balance in Summary */}
               {selectedCustomer && customerAdvanceBalance > 0 && (
                 <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-                  <div className="text-sm font-medium text-green-800">
-                    💰 Current Advance Balance
-                  </div>
-                  <div className="text-lg font-bold text-green-900">
-                    ₹{customerAdvanceBalance.toFixed(2)}
+                  <div className="flex items-center space-x-2">
+                    <Wallet className="h-4 w-4 text-green-600" />
+                    <div>
+                      <div className="text-sm font-medium text-green-800">
+                        Current Advance Balance
+                      </div>
+                      <div className="text-lg font-bold text-green-900">
+                        {formatCurrency(customerAdvanceBalance)}
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1905,7 +2138,7 @@ export default function SalesEntry() {
                       <span>
                         {item.name} x{item.quantity}
                       </span>
-                      <span>₹{item.total.toFixed(2)}</span>
+                      <span>{formatCurrency(item.total)}</span>
                     </div>
                   ))}
               </div>
@@ -1953,10 +2186,12 @@ export default function SalesEntry() {
                   {discountType !== "none" && discountValue && (
                     <div className="text-xs text-gray-500">
                       {discountType === "percentage"
-                        ? `Discount: ${discountValue}% of ₹${subtotal.toFixed(
-                            2
+                        ? `Discount: ${discountValue}% of ${formatCurrency(
+                            subtotal
                           )}`
-                        : `Discount: ₹${parseFloat(discountValue).toFixed(2)}`}
+                        : `Discount: ${formatCurrency(
+                            parseFloat(discountValue)
+                          )}`}
                     </div>
                   )}
                 </div>
@@ -1964,19 +2199,19 @@ export default function SalesEntry() {
                 <div className="border-t pt-2 space-y-2">
                   <div className="flex justify-between text-sm">
                     <span>Subtotal:</span>
-                    <span>₹{subtotal.toFixed(2)}</span>
+                    <span>{formatCurrency(subtotal)}</span>
                   </div>
 
                   {discountType !== "none" && discountAmount > 0 && (
                     <div className="flex justify-between text-sm text-green-600">
                       <span>Discount:</span>
-                      <span>-₹{discountAmount.toFixed(2)}</span>
+                      <span>-{formatCurrency(discountAmount)}</span>
                     </div>
                   )}
 
-                  <div className="flex justify-between font-semibold text-lg">
+                  <div className="flex justify-between font-semibold text-lg border-t pt-2">
                     <span>Grand Total:</span>
-                    <span>₹{grandTotal.toFixed(2)}</span>
+                    <span>{formatCurrency(grandTotal)}</span>
                   </div>
                 </div>
 
@@ -1988,25 +2223,25 @@ export default function SalesEntry() {
                     {breakdown.advanceUsed > 0 && (
                       <div className="flex justify-between text-sm text-blue-600">
                         <span>Advance Used:</span>
-                        <span>-₹{breakdown.advanceUsed.toFixed(2)}</span>
+                        <span>-{formatCurrency(breakdown.advanceUsed)}</span>
                       </div>
                     )}
                     {breakdown.cashPaid > 0 && (
                       <div className="flex justify-between text-sm">
                         <span>Cash Paid:</span>
-                        <span>₹{breakdown.cashPaid.toFixed(2)}</span>
+                        <span>{formatCurrency(breakdown.cashPaid)}</span>
                       </div>
                     )}
                     {breakdown.extraAdvance > 0 && (
                       <div className="flex justify-between text-sm text-green-600">
                         <span>Extra Advance:</span>
-                        <span>+₹{breakdown.extraAdvance.toFixed(2)}</span>
+                        <span>+{formatCurrency(breakdown.extraAdvance)}</span>
                       </div>
                     )}
                     {breakdown.due > 0 && (
-                      <div className="flex justify-between font-semibold text-red-600">
+                      <div className="flex justify-between font-semibold text-red-600 border-t pt-1">
                         <span>Due Amount:</span>
-                        <span>₹{breakdown.due.toFixed(2)}</span>
+                        <span>{formatCurrency(breakdown.due)}</span>
                       </div>
                     )}
                     {(breakdown.advanceUsed > 0 ||
@@ -2014,28 +2249,20 @@ export default function SalesEntry() {
                       <div className="flex justify-between text-sm border-t pt-1">
                         <span>New Advance Balance:</span>
                         <span className="font-medium">
-                          ₹{breakdown.newAdvanceBalance.toFixed(2)}
+                          {formatCurrency(breakdown.newAdvanceBalance)}
                         </span>
                       </div>
                     )}
                   </div>
                 )}
 
-                <div className="flex justify-between">
+                <div className="flex justify-between items-center border-t pt-2">
                   <span>Payment Type:</span>
-                  <Badge
-                    variant={
-                      paymentType === "full_cash"
-                        ? "default"
-                        : paymentType === "full_advance"
-                        ? "secondary"
-                        : paymentType === "advance_cash"
-                        ? "outline"
-                        : "destructive"
-                    }
-                  >
+                  <Badge className={getPaymentBadgeVariant(paymentType)}>
                     {paymentType === "full_cash"
                       ? "Full Cash"
+                      : paymentType === "partial_cash"
+                      ? "Partial Cash"
                       : paymentType === "full_advance"
                       ? "Full Advance"
                       : paymentType === "advance_cash"
@@ -2059,14 +2286,23 @@ export default function SalesEntry() {
                 )}
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-4 border-t">
                 <Button
                   onClick={handleSaveSale}
                   disabled={isLoading || !selectedCustomer}
-                  className="flex-1 bg-orange-500 hover:bg-orange-600"
+                  className="flex-1 bg-orange-600 hover:bg-orange-700"
                 >
-                  {isLoading ? "Saving..." : "Save Sale"}
-                  <Save className="h-4 w-4 ml-2" />
+                  {isLoading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      Save Sale
+                      <Save className="h-4 w-4 ml-2" />
+                    </>
+                  )}
                 </Button>
                 <Button
                   onClick={handlePrintBill}
