@@ -120,3 +120,33 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ===== iOS SAFARI FIXES ===== */
+/* Safe area insets for iPhone notches and home indicator */
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Improve touch targets for iOS */
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+/* Prevent zoom on focus in iOS */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
+
+/* iOS Safari viewport height fixes */
+@supports (-webkit-touch-callout: none) {
+  .h-screen {
+    height: -webkit-fill-available;
+  }
+  .min-h-screen {
+    min-height: -webkit-fill-available;
+  }
+}
