@@ -130,11 +130,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Calculate due amount based on payment type
+    // FIXED: Calculate due amount based on payment type
     let totalPayment = 0;
     let dueAmount = 0;
 
-    if (actualPaymentType === "partial_cash") {
+    if (actualPaymentType === "full_cash") {
+      // For full cash: entire amount should be paid, no due
+      totalPayment = finalPaidAmount;
+      dueAmount = 0; // FIXED: Full cash should have zero due
+      console.log("💰 Full Cash Payment:", {
+        paid: finalPaidAmount,
+        due: dueAmount,
+        total: totalAmount,
+      });
+    } else if (actualPaymentType === "partial_cash") {
       // For partial cash: only cash payment is considered
       totalPayment = finalPaidAmount;
       dueAmount = Math.max(0, totalAmount - totalPayment);
@@ -165,10 +174,10 @@ export async function POST(request: NextRequest) {
         total: totalAmount,
       });
     } else {
-      // For full_cash and credit
+      // For credit: no payment, full amount due
       totalPayment = finalPaidAmount;
       dueAmount = Math.max(0, totalAmount - totalPayment);
-      console.log("💰 Standard Payment:", {
+      console.log("💰 Credit Payment:", {
         paid: finalPaidAmount,
         due: dueAmount,
         total: totalAmount,

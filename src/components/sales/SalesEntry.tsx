@@ -785,16 +785,19 @@ export default function SalesEntry() {
       const grandTotal = calculateGrandTotal();
       const breakdown = calculatePaymentBreakdown();
 
-      // Determine final payment type for backend
+      // Determine final payment type with proper validation
       let finalPaymentType = paymentType;
-      if (paymentType === "full_cash" && breakdown.due === 0) {
-        finalPaymentType = "full_cash";
-      } else if (paymentType === "full_advance" && breakdown.due === 0) {
-        finalPaymentType = "full_cash";
-      } else if (paymentType === "advance_cash" && breakdown.due === 0) {
-        finalPaymentType = "full_cash";
-      } else if (breakdown.due > 0) {
-        finalPaymentType = "credit";
+
+      // If payment is fully settled (no due), mark as cash regardless of original type
+      if (breakdown.due === 0) {
+        if (paymentType === "full_advance" || paymentType === "advance_cash") {
+          // Keep the original type for tracking, but backend will handle due=0
+          finalPaymentType = paymentType;
+        }
+        // For full_cash and other types where due=0, keep original type
+      } else if (breakdown.due > 0 && paymentType === "full_cash") {
+        // This shouldn't happen, but if full_cash has due, something is wrong
+        console.warn("Full cash payment has due amount, checking calculation");
       }
 
       const finalSaleDate =
