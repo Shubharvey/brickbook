@@ -44,6 +44,8 @@ import {
   Target,
   BarChart3,
   Calculator,
+  Users, // Added missing import
+  MapPin, // Added missing import
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -1078,13 +1080,8 @@ export default function SalesEntry() {
                       </div>
                       <div>
                         <p className="text-xs text-gray-600">{stat.label}</p>
-                        <motion.p
-                          className="text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent"
-                          key={stat.value}
-                          initial={{ scale: 1.2 }}
-                          animate={{ scale: 1 }}
-                          transition={{ duration: 0.3 }}
-                        >
+                        {/* FIXED: Removed nested div inside p tag */}
+                        <div className="text-lg font-bold bg-gradient-to-r from-gray-800 to-gray-600 bg-clip-text text-transparent">
                           {isCalculating ? (
                             <motion.div
                               animate={{ rotate: 360 }}
@@ -1103,7 +1100,7 @@ export default function SalesEntry() {
                                 : stat.value
                             }${stat.suffix === "%" ? "" : ""}`
                           )}
-                        </motion.p>
+                        </div>
                       </div>
                     </div>
                   </CardContent>
