@@ -1,11 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import ReportsGrid from "./_sections/ReportsGrid";
-import SalesReport from "./SalesReport";
-import CustomerReport from "./CustomerReport";
-import PaymentReport from "./PaymentReport";
 import { Button } from "@/components/ui/button";
 import {
   ArrowLeft,
@@ -24,6 +20,41 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+
+// Lazy load heavy report components
+const ReportsGrid = lazy(() => import("./_sections/ReportsGrid"));
+const SalesReport = lazy(() => import("./SalesReport"));
+const CustomerReport = lazy(() => import("./CustomerReport"));
+const PaymentReport = lazy(() => import("./PaymentReport"));
+
+// Skeleton components for loading states
+const ReportsGridSkeleton = () => (
+  <div className="space-y-6 animate-pulse">
+    <div className="flex items-center justify-between">
+      <div>
+        <div className="h-6 bg-gray-200 rounded w-48 mb-2"></div>
+        <div className="h-4 bg-gray-200 rounded w-64"></div>
+      </div>
+      <div className="flex gap-2">
+        <div className="h-8 bg-gray-200 rounded w-20"></div>
+        <div className="h-8 bg-gray-200 rounded w-20"></div>
+      </div>
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+      {[...Array(6)].map((_, i) => (
+        <div key={i} className="bg-gray-200 rounded-lg p-6 h-48"></div>
+      ))}
+    </div>
+  </div>
+);
+
+const ReportSkeleton = () => (
+  <div className="space-y-4 animate-pulse">
+    <div className="h-8 bg-gray-200 rounded w-3/4"></div>
+    <div className="h-64 bg-gray-200 rounded"></div>
+    <div className="h-32 bg-gray-200 rounded"></div>
+  </div>
+);
 
 // Types for real data
 interface BusinessHealthData {
@@ -567,7 +598,9 @@ export default function ReportsManagement() {
           </div>
         </div>
 
-        <SalesReport />
+        <Suspense fallback={<ReportSkeleton />}>
+          <SalesReport />
+        </Suspense>
       </div>
     );
   }
@@ -595,7 +628,9 @@ export default function ReportsManagement() {
           </div>
         </div>
 
-        <CustomerReport />
+        <Suspense fallback={<ReportSkeleton />}>
+          <CustomerReport />
+        </Suspense>
       </div>
     );
   }
@@ -623,7 +658,9 @@ export default function ReportsManagement() {
           </div>
         </div>
 
-        <PaymentReport />
+        <Suspense fallback={<ReportSkeleton />}>
+          <PaymentReport />
+        </Suspense>
       </div>
     );
   }
@@ -695,7 +732,9 @@ export default function ReportsManagement() {
       </div>
 
       {/* Reports Grid */}
-      <ReportsGrid setActiveReport={setActiveReport} />
+      <Suspense fallback={<ReportsGridSkeleton />}>
+        <ReportsGrid setActiveReport={setActiveReport} />
+      </Suspense>
     </div>
   );
 }
