@@ -8,20 +8,21 @@ datasource db {
 }
 
 model User {
-  id              String           @id @default(cuid())
-  email           String           @unique
-  name            String?
-  phone           String?
-  company         String?
-  password        String?
-  resetToken      String?          // NEW: For password reset
-  resetTokenExpiry DateTime?       // NEW: Token expiration (1 hour validity)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  advancePayments AdvancePayment[]
-  customers       Customer[]
-  payments        Payment[]
-  sales           Sale[]
+  id               String           @id @default(cuid())
+  email            String           @unique
+  name             String?
+  phone            String?
+  company          String?
+  password         String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  advancePayments  AdvancePayment[]
+  customers        Customer[]
+  Expense          Expense[]
+  payments         Payment[]
+  sales            Sale[]
 }
 
 model Customer {
@@ -45,36 +46,36 @@ model Customer {
 }
 
 model Sale {
-  id                String    @id @default(cuid())
-  invoiceNo         String    @unique
+  id                String           @id @default(cuid())
+  invoiceNo         String           @unique
   customerId        String
   userId            String
   items             Json
   totalAmount       Float
-  paidAmount        Float     @default(0)
+  paidAmount        Float            @default(0)
   dueAmount         Float
   paymentType       String
-  status            String    @default("pending")
+  status            String           @default("pending")
   dueDate           DateTime?
   notes             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
   bankTransactionId String?
   deliveryAddress   Json?
   deliveryDate      DateTime?
   deliveryNotes     String?
-  deliveryStatus    String?   @default("pending")
-  discountAmount    Float?    @default(0)
+  deliveryStatus    String?          @default("pending")
+  discountAmount    Float?           @default(0)
   discountType      String?
-  discountValue     Float?    @default(0)
-  isBackDate        Boolean?  @default(false)
-  paymentMode       String?   @default("cash")
+  discountValue     Float?           @default(0)
+  isBackDate        Boolean?         @default(false)
+  paymentMode       String?          @default("cash")
   paymentReference  String?
-  saleDate          DateTime? @default(now())
-  payments          Payment[]
-  customer          Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  saleDate          DateTime?        @default(now())
   advancePayments   AdvancePayment[]
+  payments          Payment[]
+  customer          Customer         @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  user              User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([customerId])
@@ -101,24 +102,48 @@ model Payment {
 }
 
 model AdvancePayment {
-  id          String       @id @default(cuid())
+  id          String      @id @default(cuid())
   customerId  String
   userId      String
   amount      Float
-  type        AdvanceType
   description String?
   reference   String?
   notes       String?
+  createdAt   DateTime    @default(now())
+  date        DateTime?   @default(now())  // ✅ ADDED: Date field for custom payment dates
   saleId      String?
-  createdAt   DateTime     @default(now())
-  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  sale        Sale?        @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  type        AdvanceType
+  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale        Sale?       @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([customerId])
   @@index([userId])
   @@index([createdAt])
   @@index([saleId])
+  @@index([date])  // ✅ ADDED: Index for better query performance
+}
+
+model Expense {
+  id              String   @id
+  location        String
+  expenseCategory String
+  expenseType     String
+  amount          Float
+  date            DateTime
+  quantity        Float?
+  ratePerUnit     Float?
+  vendorName      String?
+  notes           String?
+  userId          String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime
+  User            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([expenseCategory])
+  @@index([location])
+  @@index([userId])
 }
 
 enum AdvanceType {

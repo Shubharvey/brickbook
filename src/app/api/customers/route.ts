@@ -76,6 +76,19 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid token" }, { status: 401 });
     }
 
+    // ✅ FIX: Verify user exists in database
+    const user = await db.user.findUnique({
+      where: { id: decoded.id },
+    });
+
+    if (!user) {
+      console.error("User not found in database:", decoded.id);
+      return NextResponse.json(
+        { error: "User account not found" },
+        { status: 404 }
+      );
+    }
+
     const body = await request.json();
     const { name, phone, email, address } = body;
 

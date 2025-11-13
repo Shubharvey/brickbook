@@ -7,9 +7,9 @@ const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
 export interface User {
   id: string;
   email: string;
-  name?: string;
-  phone?: string;
-  company?: string;
+  name?: string | null;
+  phone?: string | null;
+  company?: string | null;
 }
 
 export interface LoginCredentials {
@@ -82,7 +82,13 @@ export async function registerUser(
   });
 
   // Generate token
-  const token = generateToken(user);
+  const token = generateToken({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    company: user.company,
+  });
 
   return {
     user: {
@@ -115,7 +121,13 @@ export async function loginUser(
   }
 
   // Generate token
-  const token = generateToken(user);
+  const token = generateToken({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    company: user.company,
+  });
 
   return {
     user: {
@@ -141,5 +153,15 @@ export async function getUserById(id: string): Promise<User | null> {
     },
   });
 
-  return user;
+  if (!user) {
+    return null;
+  }
+
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    phone: user.phone,
+    company: user.company,
+  };
 }

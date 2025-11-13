@@ -32,6 +32,7 @@ import {
   History,
   AlertCircle,
   X,
+  CalendarIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -44,6 +45,14 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 // Utility functions
 const safeNumber = (value: any, defaultValue = 0) => {
@@ -116,6 +125,7 @@ interface AdvanceTransaction {
   reference?: string;
   saleId?: string;
   createdAt: string;
+  date?: string;
   sale?: {
     invoiceNo: string;
   };
@@ -144,6 +154,7 @@ export default function CustomerProfilePage() {
   const [advanceDescription, setAdvanceDescription] = useState("");
   const [advanceReference, setAdvanceReference] = useState("");
   const [advanceNotes, setAdvanceNotes] = useState("");
+  const [advanceDate, setAdvanceDate] = useState<Date>(new Date()); // NEW: Date state
   const [isAddingAdvance, setIsAddingAdvance] = useState(false);
   const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [advanceSuccess, setAdvanceSuccess] = useState<string | null>(null);
@@ -254,6 +265,7 @@ export default function CustomerProfilePage() {
           description: advanceDescription || "Manual advance payment",
           reference: advanceReference || undefined,
           notes: advanceNotes || undefined,
+          date: advanceDate.toISOString(), // NEW: Include date in API call
         }),
       });
 
@@ -281,6 +293,7 @@ export default function CustomerProfilePage() {
     setAdvanceDescription("");
     setAdvanceReference("");
     setAdvanceNotes("");
+    setAdvanceDate(new Date()); // NEW: Reset to current date
     setAdvanceError(null);
   };
 
@@ -1279,7 +1292,9 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                                 </p>
                               )}
                               <p className="text-xs text-gray-400">
-                                {safeDate(transaction.createdAt)}
+                                {safeDate(
+                                  transaction.date || transaction.createdAt
+                                )}
                               </p>
                             </div>
                           </div>
@@ -1360,6 +1375,37 @@ STATUS: ${safeString(sale.status).toUpperCase()}
                 placeholder="Enter amount"
                 required
               />
+            </div>
+
+            {/* NEW: Date Field */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Payment Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !advanceDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {advanceDate ? (
+                      format(advanceDate, "PPP")
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <Calendar
+                    mode="single"
+                    selected={advanceDate}
+                    onSelect={(date) => date && setAdvanceDate(date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Description */}

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log("📦 Request body:", body);
 
-    const { customerId, amount, description, reference, notes } = body;
+    const { customerId, amount, description, reference, notes, date } = body;
 
     if (!customerId || !amount || amount <= 0) {
       console.log("❌ Validation failed:", { customerId, amount });
@@ -90,6 +90,23 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate and parse date
+    let paymentDate;
+    if (date) {
+      paymentDate = new Date(date);
+      if (isNaN(paymentDate.getTime())) {
+        console.log("❌ Invalid date format:", date);
+        return NextResponse.json(
+          { error: "Invalid date format" },
+          { status: 400 }
+        );
+      }
+    } else {
+      paymentDate = new Date(); // Default to current date if not provided
+    }
+
+    console.log("📅 Using payment date:", paymentDate);
 
     console.log("🔍 Verifying customer:", customerId);
 
@@ -111,7 +128,7 @@ export async function POST(request: NextRequest) {
 
     console.log("✅ Customer found:", customer.name);
 
-    // ✅ FIX: Use correct enum value from Prisma schema
+    // Create advance payment record with date
     console.log("💾 Creating advance payment record...");
     const advancePayment = await db.advancePayment.create({
       data: {
@@ -122,6 +139,7 @@ export async function POST(request: NextRequest) {
         description: description || "Manual advance payment",
         reference: reference || null,
         notes: notes || null,
+        date: paymentDate, // ✅ ADDED: Include the payment date
       },
     });
 

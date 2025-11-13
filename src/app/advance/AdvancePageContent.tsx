@@ -3,35 +3,28 @@
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   DollarSign,
   Search,
   User,
-  Plus,
-  Calendar,
   Phone,
   Mail,
-  MessageSquare,
-  CreditCard,
+  Calendar,
+  Plus,
+  Wallet,
   ArrowUpRight,
   ArrowDownLeft,
-  Receipt,
+  CreditCard,
+  History,
   Filter,
+  Download,
   AlertCircle,
   X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -40,8 +33,17 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
-interface CustomerWithAdvance {
+interface Customer {
   id: string;
   name: string;
   phone?: string;
@@ -51,16 +53,17 @@ interface CustomerWithAdvance {
   createdAt: string;
 }
 
-interface AdvancePayment {
+interface AdvanceTransaction {
   id: string;
-  customerId: string;
   amount: number;
   type: "ADVANCE_ADDED" | "ADVANCE_PAYMENT" | "ADVANCE_USED";
   description: string;
   reference?: string;
   saleId?: string;
+  date: string;
   createdAt: string;
-  customer?: {
+  customer: {
+    id: string;
     name: string;
     phone?: string;
   };
@@ -69,79 +72,83 @@ interface AdvancePayment {
   };
 }
 
-interface AdvanceData {
-  customers: CustomerWithAdvance[];
-  summary: {
-    totalAdvance: number;
-    totalCustomers: number;
-  };
+interface AdvanceSummary {
+  totalAdvance: number;
+  totalCustomers: number;
 }
 
-interface AdvanceTransactionsResponse {
-  transactions: AdvancePayment[];
-  summary: {
-    totalAdded: number;
-    totalUsed: number;
-    totalPayments: number;
-    netAdvance: number;
-  };
-}
-
-export default function AdvancePage() {
+export default function AdvancePageContent() {
   const { token } = useAuth();
-  const [advanceData, setAdvanceData] = useState<AdvanceData | null>(null);
-  const [transactions, setTransactions] = useState<AdvancePayment[]>([]);
-  const [transactionsSummary, setTransactionsSummary] = useState({
-    totalAdded: 0,
-    totalUsed: 0,
-    totalPayments: 0,
-    netAdvance: 0,
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [transactions, setTransactions] = useState<AdvanceTransaction[]>([]);
+  const [summary, setSummary] = useState<AdvanceSummary>({
+    totalAdvance: 0,
+    totalCustomers: 0,
   });
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingTransactions, setIsLoadingTransactions] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [transactionFilter, setTransactionFilter] = useState("all");
-  const [activeTab, setActiveTab] = useState<"customers" | "transactions">(
-    "customers"
-  );
 
   // Add Advance Modal States
   const [showAddAdvanceModal, setShowAddAdvanceModal] = useState(false);
-  const [selectedCustomer, setSelectedCustomer] = useState("");
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(
+    null
+  );
   const [advanceAmount, setAdvanceAmount] = useState("");
   const [advanceDescription, setAdvanceDescription] = useState("");
   const [advanceReference, setAdvanceReference] = useState("");
   const [advanceNotes, setAdvanceNotes] = useState("");
+  const [advanceDate, setAdvanceDate] = useState<Date>(new Date()); // NEW: Date state
   const [isAddingAdvance, setIsAddingAdvance] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [advanceError, setAdvanceError] = useState<string | null>(null);
+  const [advanceSuccess, setAdvanceSuccess] = useState<string | null>(null);
+
+  // Filter states
+  const [dateFilter, setDateFilter] = useState<
+    "all" | "today" | "week" | "month"
+  >("all");
+  const [typeFilter, setTypeFilter] = useState<
+    "all" | "ADVANCE_ADDED" | "ADVANCE_USED"
+  >("all");
 
   useEffect(() => {
     if (token) {
       fetchAdvanceData();
-      fetchAdvanceTransactions();
     }
   }, [token]);
 
-  // Clear success message after 3 seconds
+  // Clear success message
   useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => setSuccess(null), 3000);
+    if (advanceSuccess) {
+      const timer = setTimeout(() => setAdvanceSuccess(null), 3000);
       return () => clearTimeout(timer);
     }
-  }, [success]);
+  }, [advanceSuccess]);
 
   const fetchAdvanceData = async () => {
     try {
-      const response = await fetch("/api/advance", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      setIsLoading(true);
+
+      // Fetch advance summary and customers
+      const advanceRes = await fetch("/api/advance", {
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setAdvanceData(data);
+      if (advanceRes.ok) {
+        const advanceData = await advanceRes.json();
+        setCustomers(advanceData.customers || []);
+        setSummary(
+          advanceData.summary || { totalAdvance: 0, totalCustomers: 0 }
+        );
+      }
+
+      // Fetch advance transactions
+      const transactionsRes = await fetch("/api/advance/transactions", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (transactionsRes.ok) {
+        const transactionsData = await transactionsRes.json();
+        setTransactions(transactionsData.transactions || []);
       }
     } catch (error) {
       console.error("Failed to fetch advance data:", error);
@@ -150,44 +157,18 @@ export default function AdvancePage() {
     }
   };
 
-  const fetchAdvanceTransactions = async (filter?: string) => {
-    try {
-      setIsLoadingTransactions(true);
-      const url =
-        filter && filter !== "all"
-          ? `/api/advance/transactions?type=${filter}`
-          : "/api/advance/transactions";
-
-      const response = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (response.ok) {
-        const data: AdvanceTransactionsResponse = await response.json();
-        setTransactions(data.transactions);
-        setTransactionsSummary(data.summary);
-      }
-    } catch (error) {
-      console.error("Failed to fetch advance transactions:", error);
-    } finally {
-      setIsLoadingTransactions(false);
-    }
-  };
-
   // Add Advance Functions
   const handleAddAdvanceSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!selectedCustomer || !advanceAmount || parseFloat(advanceAmount) <= 0) {
-      setError("Please select a customer and enter a valid amount");
+      setAdvanceError("Please select a customer and enter a valid amount");
       return;
     }
 
     try {
       setIsAddingAdvance(true);
-      setError(null);
+      setAdvanceError(null);
 
       const response = await fetch("/api/advance", {
         method: "POST",
@@ -196,41 +177,42 @@ export default function AdvancePage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          customerId: selectedCustomer,
+          customerId: selectedCustomer.id,
           amount: parseFloat(advanceAmount),
           description: advanceDescription || "Manual advance payment",
           reference: advanceReference || undefined,
           notes: advanceNotes || undefined,
+          date: advanceDate.toISOString(), // NEW: Include date in API call
         }),
       });
 
       const data = await response.json();
 
       if (response.ok) {
-        setSuccess(data.message || "Advance added successfully");
+        setAdvanceSuccess(data.message || "Advance added successfully");
         setShowAddAdvanceModal(false);
         resetAdvanceForm();
-        // Refresh data
+        // Refresh advance data
         fetchAdvanceData();
-        fetchAdvanceTransactions();
       } else {
-        setError(data.error || "Failed to add advance");
+        setAdvanceError(data.error || "Failed to add advance");
       }
     } catch (error) {
       console.error("Failed to add advance:", error);
-      setError("Failed to add advance. Please try again.");
+      setAdvanceError("Failed to add advance. Please try again.");
     } finally {
       setIsAddingAdvance(false);
     }
   };
 
   const resetAdvanceForm = () => {
-    setSelectedCustomer("");
+    setSelectedCustomer(null);
     setAdvanceAmount("");
     setAdvanceDescription("");
     setAdvanceReference("");
     setAdvanceNotes("");
-    setError(null);
+    setAdvanceDate(new Date()); // NEW: Reset to current date
+    setAdvanceError(null);
   };
 
   const handleModalClose = () => {
@@ -238,36 +220,11 @@ export default function AdvancePage() {
     resetAdvanceForm();
   };
 
-  const filteredCustomers = advanceData?.customers.filter((customer) =>
-    customer.name.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const filteredTransactions = transactions.filter((transaction) => {
-    if (transactionFilter === "all") return true;
-    return transaction.type === transactionFilter;
-  });
-
-  const formatCurrency = (amount: number) => {
-    return `₹${amount.toLocaleString("en-IN")}`;
-  };
-
-  const safeDate = (value: string) => {
-    if (!value) return "Never";
-    try {
-      return new Date(value).toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-        year: "numeric",
-      });
-    } catch {
-      return "Invalid Date";
+  const openAddAdvanceModal = (customer?: Customer) => {
+    if (customer) {
+      setSelectedCustomer(customer);
     }
-  };
-
-  const getAdvanceColor = (amount: number) => {
-    if (amount > 50000) return "text-green-600 font-semibold";
-    if (amount > 10000) return "text-blue-600";
-    return "text-gray-600";
+    setShowAddAdvanceModal(true);
   };
 
   const getTransactionTypeInfo = (type: string) => {
@@ -299,17 +256,57 @@ export default function AdvancePage() {
     }
   };
 
-  const handleTransactionFilterChange = (value: string) => {
-    setTransactionFilter(value);
-    fetchAdvanceTransactions(value);
+  const formatCurrency = (amount: number) => {
+    return `₹${amount.toLocaleString("en-IN")}`;
   };
+
+  const safeDate = (value: string) => {
+    if (!value) return "Unknown";
+    try {
+      return new Date(value).toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
+  // Filter transactions
+  const filteredTransactions = transactions.filter((transaction) => {
+    // Search filter
+    const matchesSearch = transaction.customer.name
+      .toLowerCase()
+      .includes(searchTerm.toLowerCase());
+
+    // Type filter
+    const matchesType = typeFilter === "all" || transaction.type === typeFilter;
+
+    // Date filter
+    const transactionDate = new Date(transaction.date);
+    const now = new Date();
+    let matchesDate = true;
+
+    if (dateFilter === "today") {
+      matchesDate = transactionDate.toDateString() === now.toDateString();
+    } else if (dateFilter === "week") {
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      matchesDate = transactionDate >= weekAgo;
+    } else if (dateFilter === "month") {
+      const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+      matchesDate = transactionDate >= monthAgo;
+    }
+
+    return matchesSearch && matchesType && matchesDate;
+  });
 
   if (isLoading) {
     return (
       <div className="space-y-6 pb-20 md:pb-6">
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/3 mb-6"></div>
-          <div className="grid gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             {[...Array(3)].map((_, i) => (
               <div key={i} className="h-32 bg-gray-200 rounded-lg"></div>
             ))}
@@ -319,18 +316,14 @@ export default function AdvancePage() {
     );
   }
 
-  const totalAdvance = advanceData?.summary.totalAdvance || 0;
-  const customerCount = advanceData?.summary.totalCustomers || 0;
-  const averageAdvance = customerCount > 0 ? totalAdvance / customerCount : 0;
-
   return (
     <div className="space-y-6 pb-20 md:pb-6">
-      {/* Success Message */}
-      {success && (
-        <Alert className="bg-green-50 border-green-200">
+      {/* Success Message for Advance */}
+      {advanceSuccess && (
+        <Alert className="bg-green-50 border-green-200 mb-6">
           <AlertCircle className="h-4 w-4 text-green-600" />
           <AlertDescription className="text-green-800">
-            {success}
+            {advanceSuccess}
           </AlertDescription>
         </Alert>
       )}
@@ -342,11 +335,11 @@ export default function AdvancePage() {
             Advance Management
           </h1>
           <p className="text-gray-600 text-sm md:text-base">
-            Track customer advance payments and credits
+            Manage customer advance payments and balances
           </p>
         </div>
         <Button
-          onClick={() => setShowAddAdvanceModal(true)}
+          onClick={() => openAddAdvanceModal()}
           className="bg-green-600 hover:bg-green-700"
         >
           <Plus className="h-4 w-4 mr-2" />
@@ -354,393 +347,252 @@ export default function AdvancePage() {
         </Button>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
-          <button
-            onClick={() => setActiveTab("customers")}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "customers"
-                ? "border-green-500 text-green-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <User className="h-4 w-4 inline mr-2" />
-            Customers ({customerCount})
-          </button>
-          <button
-            onClick={() => setActiveTab("transactions")}
-            className={`py-2 px-1 border-b-2 font-medium text-sm ${
-              activeTab === "transactions"
-                ? "border-green-500 text-green-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-            }`}
-          >
-            <Receipt className="h-4 w-4 inline mr-2" />
-            Transactions ({transactions.length})
-          </button>
-        </nav>
-      </div>
-
       {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <DollarSign className="h-6 w-6 md:h-8 md:w-8 text-green-500" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs md:text-sm text-gray-600">
+                <p className="text-sm font-medium text-gray-600">
                   Total Advance
                 </p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(totalAdvance)}
+                <p className="text-2xl font-bold text-gray-900">
+                  {formatCurrency(summary.totalAdvance)}
                 </p>
+                <p className="text-sm text-gray-500">Across all customers</p>
               </div>
+              <Wallet className="h-8 w-8 text-green-600" />
             </div>
           </CardContent>
         </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <User className="h-6 w-6 md:h-8 md:w-8 text-blue-500" />
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs md:text-sm text-gray-600">
+                <p className="text-sm font-medium text-gray-600">
                   Customers with Advance
                 </p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {customerCount}
+                <p className="text-2xl font-bold text-gray-900">
+                  {summary.totalCustomers}
                 </p>
+                <p className="text-sm text-gray-500">Active advance accounts</p>
               </div>
+              <User className="h-8 w-8 text-blue-600" />
             </div>
           </CardContent>
         </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <ArrowDownLeft className="h-6 w-6 md:h-8 md:w-8 text-green-500" />
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-xs md:text-sm text-gray-600">Total Added</p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(
-                    transactionsSummary.totalAdded +
-                      transactionsSummary.totalPayments
-                  )}
+                <p className="text-sm font-medium text-gray-600">
+                  Recent Transactions
                 </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="min-h-[100px]">
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <ArrowUpRight className="h-6 w-6 md:h-8 md:w-8 text-orange-500" />
-              <div>
-                <p className="text-xs md:text-sm text-gray-600">Total Used</p>
-                <p className="text-lg md:text-2xl font-bold text-gray-900">
-                  {formatCurrency(transactionsSummary.totalUsed)}
+                <p className="text-2xl font-bold text-gray-900">
+                  {transactions.length}
                 </p>
+                <p className="text-sm text-gray-500">All time transactions</p>
               </div>
+              <CreditCard className="h-8 w-8 text-orange-600" />
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Customers Tab Content */}
-      {activeTab === "customers" && (
-        <>
-          {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search by customer name..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </div>
+      {/* Filters and Search */}
+      <div className="flex flex-col sm:flex-row gap-4">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+          <Input
+            placeholder="Search by customer name..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="pl-10"
+          />
+        </div>
 
-          {/* Customers List */}
-          <div className="space-y-4">
-            {filteredCustomers?.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <DollarSign className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {searchTerm ? "No customers found" : "No advance records"}
-                  </h3>
-                  <p className="text-gray-600">
-                    {searchTerm
-                      ? "Try a different search term"
-                      : "Customers with advance payments will appear here"}
-                  </p>
-                  {!searchTerm && (
-                    <Button
-                      onClick={() => setShowAddAdvanceModal(true)}
-                      className="mt-4"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add First Advance
-                    </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              filteredCustomers?.map((customer) => (
-                <Card
+        <div className="flex gap-2">
+          <select
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value as any)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="all">All Dates</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+          </select>
+
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value as any)}
+            className="px-3 py-2 border border-gray-300 rounded-md text-sm"
+          >
+            <option value="all">All Types</option>
+            <option value="ADVANCE_ADDED">Advance Added</option>
+            <option value="ADVANCE_USED">Advance Used</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Customers with Advance */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <User className="h-5 w-5 mr-2" />
+            Customers with Advance Balance
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {customers.length > 0 ? (
+            <div className="space-y-4">
+              {customers.map((customer) => (
+                <div
                   key={customer.id}
-                  className="hover:shadow-md transition-shadow"
+                  className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors"
                 >
-                  <CardContent className="p-4 md:p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        {/* Customer Name and Status */}
-                        <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
-                          <h3 className="text-lg font-semibold text-gray-900 break-words">
-                            {customer.name}
-                          </h3>
-                          <div className="flex flex-wrap gap-2">
-                            <Badge className="bg-green-100 text-green-800 text-xs">
-                              Advance: {formatCurrency(customer.advanceBalance)}
-                            </Badge>
-                          </div>
-                        </div>
-
-                        {/* Customer Details */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4 mb-3">
-                          <div className="space-y-2">
-                            <div className="flex items-center text-sm text-gray-600">
-                              <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
-                              <span className="truncate">
-                                Customer Since: {safeDate(customer.createdAt)}
-                              </span>
-                            </div>
-                            {customer.phone && (
-                              <div className="flex items-center text-sm text-gray-600">
-                                <Phone className="h-4 w-4 mr-2 flex-shrink-0" />
-                                <span className="truncate">
-                                  {customer.phone}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="space-y-2 text-left md:text-right">
-                            <div className="text-sm text-gray-600">
-                              Last Activity:{" "}
-                              {safeDate(
-                                customer.lastPurchaseDate || customer.createdAt
-                              )}
-                            </div>
-                            <div
-                              className={`text-base md:text-lg font-bold ${getAdvanceColor(
-                                customer.advanceBalance
-                              )}`}
-                            >
-                              Balance: {formatCurrency(customer.advanceBalance)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                          <div className="text-sm text-gray-500">
-                            ID: {customer.id.slice(-6).toUpperCase()}
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1 sm:flex-none"
-                              onClick={() =>
-                                window.open(`tel:${customer.phone}`)
-                              }
-                              disabled={!customer.phone}
-                            >
-                              <Phone className="h-4 w-4 mr-2" />
-                              <span className="hidden sm:inline">Call</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="flex-1 sm:flex-none"
-                            >
-                              <MessageSquare className="h-4 w-4 mr-2" />
-                              <span className="hidden sm:inline">Message</span>
-                            </Button>
-                            <Button
-                              size="sm"
-                              className="flex-1 sm:flex-none bg-blue-600 hover:bg-blue-700"
-                              onClick={() => {
-                                setSelectedCustomer(customer.id);
-                                setShowAddAdvanceModal(true);
-                              }}
-                            >
-                              <CreditCard className="h-4 w-4 mr-2" />
-                              <span className="hidden sm:inline">
-                                Add Advance
-                              </span>
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="bg-blue-100 p-2 rounded-lg">
+                      <User className="h-6 w-6 text-blue-600" />
                     </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Transactions Tab Content */}
-      {activeTab === "transactions" && (
-        <>
-          {/* Transaction Filters */}
-          <div className="flex flex-col sm:flex-row gap-3 md:gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-              <Input
-                placeholder="Search transactions..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="w-full sm:w-48">
-              <Select
-                value={transactionFilter}
-                onValueChange={handleTransactionFilterChange}
-              >
-                <SelectTrigger>
-                  <Filter className="h-4 w-4 mr-2" />
-                  <SelectValue placeholder="Filter by type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Transactions</SelectItem>
-                  <SelectItem value="ADVANCE_ADDED">
-                    Manual Additions
-                  </SelectItem>
-                  <SelectItem value="ADVANCE_PAYMENT">
-                    Extra Payments
-                  </SelectItem>
-                  <SelectItem value="ADVANCE_USED">Advance Used</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-
-          {/* Transactions List */}
-          <div className="space-y-4">
-            {isLoadingTransactions ? (
-              <div className="animate-pulse space-y-4">
-                {[...Array(5)].map((_, i) => (
-                  <div key={i} className="h-20 bg-gray-200 rounded-lg"></div>
-                ))}
-              </div>
-            ) : filteredTransactions.length === 0 ? (
-              <Card>
-                <CardContent className="text-center py-12">
-                  <Receipt className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                    {transactionFilter !== "all"
-                      ? "No transactions found"
-                      : "No transactions"}
-                  </h3>
-                  <p className="text-gray-600">
-                    {transactionFilter !== "all"
-                      ? `No ${transactionFilter
-                          .toLowerCase()
-                          .replace("_", " ")} transactions found`
-                      : "Advance transactions will appear here"}
-                  </p>
-                  {transactionFilter === "all" && (
+                    <div>
+                      <h3 className="font-semibold text-gray-900">
+                        {customer.name}
+                      </h3>
+                      <div className="flex items-center space-x-4 mt-1 text-sm text-gray-600">
+                        {customer.phone && (
+                          <div className="flex items-center">
+                            <Phone className="h-3 w-3 mr-1" />
+                            {customer.phone}
+                          </div>
+                        )}
+                        {customer.email && (
+                          <div className="flex items-center">
+                            <Mail className="h-3 w-3 mr-1" />
+                            {customer.email}
+                          </div>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">
+                        Last purchase:{" "}
+                        {safeDate(
+                          customer.lastPurchaseDate || customer.createdAt
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-green-600">
+                        {formatCurrency(customer.advanceBalance)}
+                      </p>
+                      <Badge className="bg-green-100 text-green-800">
+                        Available
+                      </Badge>
+                    </div>
                     <Button
-                      onClick={() => setShowAddAdvanceModal(true)}
-                      className="mt-4"
+                      onClick={() => openAddAdvanceModal(customer)}
+                      size="sm"
+                      className="bg-green-600 hover:bg-green-700"
                     >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add First Advance
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add
                     </Button>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              filteredTransactions.map((transaction) => {
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Wallet className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-lg font-semibold text-gray-900 mb-2">
+                No advance balances
+              </p>
+              <p className="text-gray-600 mb-4">
+                No customers have advance balances yet
+              </p>
+              <Button
+                onClick={() => openAddAdvanceModal()}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Add First Advance
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Recent Transactions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <History className="h-5 w-5 mr-2" />
+            Recent Advance Transactions
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {filteredTransactions.length > 0 ? (
+            <div className="space-y-4">
+              {filteredTransactions.map((transaction) => {
                 const typeInfo = getTransactionTypeInfo(transaction.type);
                 const IconComponent = typeInfo.icon;
 
                 return (
-                  <Card
+                  <div
                     key={transaction.id}
-                    className="hover:shadow-md transition-shadow"
+                    className="flex items-center justify-between p-4 border rounded-lg"
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-2">
-                            <h3 className="font-semibold text-gray-900">
-                              {transaction.customer?.name || "Customer"}
-                            </h3>
-                            <Badge
-                              className={`${typeInfo.color} text-xs w-fit`}
-                            >
-                              <IconComponent className="h-3 w-3 mr-1" />
-                              {typeInfo.label}
-                            </Badge>
-                          </div>
-
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                            <div className="space-y-1">
-                              <p className="text-sm text-gray-600">
-                                {transaction.description}
-                              </p>
-                              {transaction.reference && (
-                                <p className="text-xs text-gray-500">
-                                  Ref: {transaction.reference}
-                                </p>
-                              )}
-                              {transaction.sale?.invoiceNo && (
-                                <p className="text-xs text-blue-600">
-                                  Sale: {transaction.sale.invoiceNo}
-                                </p>
-                              )}
-                            </div>
-                            <div className="text-left md:text-right space-y-1">
-                              <div
-                                className={`text-lg font-bold ${
-                                  transaction.type === "ADVANCE_USED"
-                                    ? "text-orange-600"
-                                    : "text-green-600"
-                                }`}
-                              >
-                                {transaction.type === "ADVANCE_USED"
-                                  ? "-"
-                                  : "+"}
-                                {formatCurrency(Math.abs(transaction.amount))}
-                              </div>
-                              <div className="text-xs text-gray-500">
-                                {safeDate(transaction.createdAt)}
-                              </div>
-                            </div>
-                          </div>
-
-                          {transaction.customer?.phone && (
-                            <div className="flex items-center text-xs text-gray-500">
-                              <Phone className="h-3 w-3 mr-1" />
-                              {transaction.customer.phone}
-                            </div>
-                          )}
-                        </div>
+                    <div className="flex items-center space-x-4">
+                      <div className={`p-2 rounded-lg ${typeInfo.color}`}>
+                        <IconComponent className="h-4 w-4" />
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div>
+                        <p className="font-semibold">{typeInfo.label}</p>
+                        <p className="text-sm text-gray-500">
+                          {transaction.customer.name}
+                        </p>
+                        {transaction.sale?.invoiceNo && (
+                          <p className="text-xs text-blue-600">
+                            Sale: {transaction.sale.invoiceNo}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-400">
+                          {safeDate(transaction.date)}
+                        </p>
+                      </div>
+                    </div>
+                    <div
+                      className={`text-lg font-bold ${
+                        transaction.type === "ADVANCE_USED"
+                          ? "text-orange-600"
+                          : "text-green-600"
+                      }`}
+                    >
+                      {transaction.type === "ADVANCE_USED" ? "-" : "+"}
+                      {formatCurrency(Math.abs(transaction.amount))}
+                    </div>
+                  </div>
                 );
-              })
-            )}
-          </div>
-        </>
-      )}
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <CreditCard className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+              <p className="text-lg font-semibold text-gray-900 mb-2">
+                No transactions found
+              </p>
+              <p className="text-gray-600">
+                {searchTerm || dateFilter !== "all" || typeFilter !== "all"
+                  ? "Try adjusting your filters"
+                  : "No advance transactions recorded yet"}
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Add Advance Modal */}
       <Dialog open={showAddAdvanceModal} onOpenChange={handleModalClose}>
@@ -751,7 +603,9 @@ export default function AdvancePage() {
               Add Advance Payment
             </DialogTitle>
             <DialogDescription>
-              Add advance amount to customer's wallet balance
+              {selectedCustomer
+                ? `Add advance to ${selectedCustomer.name}'s wallet`
+                : "Select a customer and add advance amount"}
             </DialogDescription>
           </DialogHeader>
 
@@ -761,16 +615,20 @@ export default function AdvancePage() {
               <Label htmlFor="customer">Customer *</Label>
               <select
                 id="customer"
-                value={selectedCustomer}
-                onChange={(e) => setSelectedCustomer(e.target.value)}
+                value={selectedCustomer?.id || ""}
+                onChange={(e) => {
+                  const customer = customers.find(
+                    (c) => c.id === e.target.value
+                  );
+                  setSelectedCustomer(customer || null);
+                }}
                 className="w-full p-2 border border-gray-300 rounded-md"
                 required
               >
                 <option value="">Select a customer</option>
-                {advanceData?.customers.map((customer) => (
+                {customers.map((customer) => (
                   <option key={customer.id} value={customer.id}>
-                    {customer.name} (Current:{" "}
-                    {formatCurrency(customer.advanceBalance)})
+                    {customer.name} ({formatCurrency(customer.advanceBalance)})
                   </option>
                 ))}
               </select>
@@ -789,6 +647,37 @@ export default function AdvancePage() {
                 placeholder="Enter amount"
                 required
               />
+            </div>
+
+            {/* NEW: Date Field */}
+            <div className="space-y-2">
+              <Label htmlFor="date">Payment Date *</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !advanceDate && "text-muted-foreground"
+                    )}
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {advanceDate ? (
+                      format(advanceDate, "PPP")
+                    ) : (
+                      <span>Pick a date</span>
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <CalendarComponent
+                    mode="single"
+                    selected={advanceDate}
+                    onSelect={(date) => date && setAdvanceDate(date)}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* Description */}
@@ -827,10 +716,10 @@ export default function AdvancePage() {
             </div>
 
             {/* Error Message */}
-            {error && (
+            {advanceError && (
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{error}</AlertDescription>
+                <AlertDescription>{advanceError}</AlertDescription>
               </Alert>
             )}
 
@@ -845,7 +734,7 @@ export default function AdvancePage() {
               </Button>
               <Button
                 type="submit"
-                disabled={isAddingAdvance}
+                disabled={isAddingAdvance || !selectedCustomer}
                 className="bg-green-600 hover:bg-green-700"
               >
                 {isAddingAdvance ? (
