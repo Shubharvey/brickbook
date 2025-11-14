@@ -18,6 +18,8 @@ import {
   Receipt,
   ChevronDown,
   ChevronRight,
+  Wallet,
+  CreditCard,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -41,6 +43,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface Due {
   id: string;
@@ -70,10 +73,19 @@ interface CustomerDue {
   isExpanded: boolean;
 }
 
+interface CustomerAdvance {
+  id: string;
+  name: string;
+  advanceBalance: number;
+}
+
 export default function DuesManagement() {
   const { token } = useAuth();
   const [dues, setDues] = useState<Due[]>([]);
   const [groupedDues, setGroupedDues] = useState<CustomerDue[]>([]);
+  const [customerAdvances, setCustomerAdvances] = useState<CustomerAdvance[]>(
+    []
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState<
@@ -86,15 +98,21 @@ export default function DuesManagement() {
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<
-    "cash" | "upi" | "bank_transfer" | "cheque"
+    "cash" | "upi" | "bank_transfer" | "cheque" | "advance_deduction"
   >("cash");
   const [referenceNumber, setReferenceNumber] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
 
+  // Advance deduction state
+  const [advanceBalance, setAdvanceBalance] = useState(0);
+  const [advanceError, setAdvanceError] = useState<string | null>(null);
+  const [advanceSuccess, setAdvanceSuccess] = useState<string | null>(null);
+
   useEffect(() => {
     if (token) {
       fetchDues();
+      fetchCustomerAdvances();
     }
   }, [token]);
 
@@ -150,6 +168,23 @@ export default function DuesManagement() {
     }
   };
 
+  const fetchCustomerAdvances = async () => {
+    try {
+      const response = await fetch("/api/advance", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setCustomerAdvances(data.customers || []);
+      }
+    } catch (error) {
+      console.error("Failed to fetch customer advances:", error);
+    }
+  };
+
   const filteredGroupedDues = groupedDues.filter((customerDue) => {
     const matchesSearch = customerDue.customerName
       .toLowerCase()
@@ -197,6 +232,15 @@ export default function DuesManagement() {
     setPaymentMode("cash");
     setReferenceNumber("");
     setPaymentNotes("");
+    setAdvanceError(null);
+    setAdvanceSuccess(null);
+
+    // Find customer's advance balance
+    const customerAdvance = customerAdvances.find(
+      (adv) => adv.id === due.customer.id
+    );
+    setAdvanceBalance(customerAdvance?.advanceBalance || 0);
+
     setShowPaymentDialog(true);
   };
 
@@ -205,6 +249,8 @@ export default function DuesManagement() {
     setSelectedDue(null);
     setPaymentAmount("");
     setIsProcessing(false);
+    setAdvanceError(null);
+    setAdvanceSuccess(null);
   };
 
   const handleRecordPayment = async () => {
@@ -221,46 +267,106 @@ export default function DuesManagement() {
       return;
     }
 
+    // Special validation for advance deduction
+    if (paymentMode === "advance_deduction") {
+      if (paymentAmountNum > advanceBalance) {
+        setAdvanceError(
+          `Insufficient advance balance. Available: ₹${advanceBalance}`
+        );
+        return;
+      }
+    }
+
     setIsProcessing(true);
+    setAdvanceError(null);
 
     try {
-      const paymentData = {
-        saleId: selectedDue.saleId,
-        customerId: selectedDue.customer.id,
-        amount: paymentAmountNum,
-        method: paymentMode,
-        referenceNumber: referenceNumber || undefined,
-        notes: paymentNotes || undefined,
-      };
+      let response;
 
-      console.log("Sending payment data:", paymentData);
+      if (paymentMode === "advance_deduction") {
+        // Use advance deduction API
+        const deductionData = {
+          saleId: selectedDue.saleId,
+          customerId: selectedDue.customer.id,
+          amount: paymentAmountNum,
+          description: paymentNotes || "Due payment from advance",
+          date: new Date().toISOString(),
+        };
 
-      const response = await fetch("/api/payments", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(paymentData),
-      });
+        console.log("Sending advance deduction data:", deductionData);
+
+        response = await fetch("/api/dues/advance-deduction", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(deductionData),
+        });
+      } else {
+        // Use regular payment API
+        const paymentData = {
+          saleId: selectedDue.saleId,
+          customerId: selectedDue.customer.id,
+          amount: paymentAmountNum,
+          method: paymentMode,
+          referenceNumber: referenceNumber || undefined,
+          notes: paymentNotes || undefined,
+        };
+
+        console.log("Sending payment data:", paymentData);
+
+        response = await fetch("/api/payments", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(paymentData),
+        });
+      }
 
       const responseData = await response.json();
 
       if (response.ok) {
         await fetchDues();
-        closePaymentDialog();
-        alert(
-          `Payment of ₹${paymentAmountNum.toLocaleString(
-            "en-IN"
-          )} recorded successfully for ${selectedDue.customer.name}!`
-        );
+        await fetchCustomerAdvances(); // Refresh advance balances
+
+        if (paymentMode === "advance_deduction") {
+          setAdvanceSuccess(
+            `₹${paymentAmountNum.toLocaleString(
+              "en-IN"
+            )} deducted from advance successfully!`
+          );
+          // Keep dialog open to show success message
+          setTimeout(() => {
+            closePaymentDialog();
+          }, 2000);
+        } else {
+          closePaymentDialog();
+          alert(
+            `Payment of ₹${paymentAmountNum.toLocaleString(
+              "en-IN"
+            )} recorded successfully for ${selectedDue.customer.name}!`
+          );
+        }
       } else {
         console.error("Payment failed:", responseData);
-        alert(responseData.error || "Failed to record payment");
+        if (paymentMode === "advance_deduction") {
+          setAdvanceError(
+            responseData.error || "Failed to deduct from advance"
+          );
+        } else {
+          alert(responseData.error || "Failed to record payment");
+        }
       }
     } catch (error) {
       console.error("Failed to record payment:", error);
-      alert("Failed to record payment. Please try again.");
+      if (paymentMode === "advance_deduction") {
+        setAdvanceError("Failed to deduct from advance. Please try again.");
+      } else {
+        alert("Failed to record payment. Please try again.");
+      }
     } finally {
       setIsProcessing(false);
     }
@@ -491,6 +597,14 @@ export default function DuesManagement() {
                           const daysOverdue = calculateDaysOverdue(
                             due.createdAt
                           );
+                          // Find customer's advance balance for this due
+                          const customerAdvance = customerAdvances.find(
+                            (adv) => adv.id === due.customer.id
+                          );
+                          const hasAdvance =
+                            customerAdvance &&
+                            customerAdvance.advanceBalance > 0;
+
                           return (
                             <div
                               key={due.id}
@@ -519,6 +633,18 @@ export default function DuesManagement() {
                                       className="text-xs"
                                     >
                                       {daysOverdue}d overdue
+                                    </Badge>
+                                  )}
+                                  {hasAdvance && (
+                                    <Badge
+                                      variant="outline"
+                                      className="text-xs bg-green-50 text-green-700 border-green-200"
+                                    >
+                                      <Wallet className="h-3 w-3 mr-1" />
+                                      Advance: ₹
+                                      {customerAdvance.advanceBalance.toLocaleString(
+                                        "en-IN"
+                                      )}
                                     </Badge>
                                   )}
                                 </div>
@@ -598,7 +724,7 @@ export default function DuesManagement() {
         )}
       </div>
 
-      {/* Payment Recording Dialog (keep the same as before) */}
+      {/* Payment Recording Dialog */}
       <Dialog open={showPaymentDialog} onOpenChange={setShowPaymentDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -610,6 +736,16 @@ export default function DuesManagement() {
 
           {selectedDue && (
             <div className="space-y-4">
+              {/* Success Message for Advance Deduction */}
+              {advanceSuccess && (
+                <Alert className="bg-green-50 border-green-200">
+                  <AlertCircle className="h-4 w-4 text-green-600" />
+                  <AlertDescription className="text-green-800">
+                    {advanceSuccess}
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {/* Customer Info */}
               <div className="bg-gray-50 p-3 rounded-lg">
                 <h4 className="font-semibold text-gray-900">
@@ -621,6 +757,14 @@ export default function DuesManagement() {
                 <p className="text-sm text-gray-600">
                   Due Amount: ₹{selectedDue.dueAmount.toLocaleString("en-IN")}
                 </p>
+                {advanceBalance > 0 && (
+                  <div className="flex items-center gap-2 mt-2 p-2 bg-blue-50 rounded border border-blue-200">
+                    <Wallet className="h-4 w-4 text-blue-600" />
+                    <span className="text-sm text-blue-700 font-medium">
+                      Advance Balance: ₹{advanceBalance.toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {/* Payment Amount */}
@@ -646,7 +790,10 @@ export default function DuesManagement() {
                 <Label htmlFor="paymentMode">Payment Mode *</Label>
                 <Select
                   value={paymentMode}
-                  onValueChange={(value: any) => setPaymentMode(value)}
+                  onValueChange={(value: any) => {
+                    setPaymentMode(value);
+                    setAdvanceError(null);
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -656,35 +803,62 @@ export default function DuesManagement() {
                     <SelectItem value="upi">UPI</SelectItem>
                     <SelectItem value="bank_transfer">Bank Transfer</SelectItem>
                     <SelectItem value="cheque">Cheque</SelectItem>
+                    {advanceBalance > 0 && (
+                      <SelectItem value="advance_deduction">
+                        <div className="flex items-center gap-2">
+                          <Wallet className="h-4 w-4 text-green-600" />
+                          <span>Pay from Advance</span>
+                          <Badge variant="outline" className="ml-2 text-xs">
+                            ₹{advanceBalance.toLocaleString("en-IN")}
+                          </Badge>
+                        </div>
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
+
+                {/* Advance Balance Info */}
+                {paymentMode === "advance_deduction" && advanceBalance > 0 && (
+                  <div className="p-2 bg-green-50 rounded border border-green-200">
+                    <p className="text-sm text-green-700">
+                      Available Advance: ₹
+                      {advanceBalance.toLocaleString("en-IN")}
+                    </p>
+                    {parseFloat(paymentAmount || "0") > advanceBalance && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Payment amount exceeds available advance balance
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {/* Reference Number (for non-cash payments) */}
-              {paymentMode !== "cash" && (
-                <div className="space-y-2">
-                  <Label htmlFor="referenceNumber">
-                    {paymentMode === "upi"
-                      ? "UPI Transaction ID"
-                      : paymentMode === "bank_transfer"
-                      ? "Bank Transaction ID"
-                      : "Cheque Number"}{" "}
-                    *
-                  </Label>
-                  <Input
-                    id="referenceNumber"
-                    placeholder={`Enter ${
-                      paymentMode === "upi"
+              {/* Reference Number (for non-cash payments, excluding advance) */}
+              {paymentMode !== "cash" &&
+                paymentMode !== "advance_deduction" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="referenceNumber">
+                      {paymentMode === "upi"
                         ? "UPI Transaction ID"
                         : paymentMode === "bank_transfer"
                         ? "Bank Transaction ID"
-                        : "Cheque Number"
-                    }`}
-                    value={referenceNumber}
-                    onChange={(e) => setReferenceNumber(e.target.value)}
-                  />
-                </div>
-              )}
+                        : "Cheque Number"}{" "}
+                      *
+                    </Label>
+                    <Input
+                      id="referenceNumber"
+                      placeholder={`Enter ${
+                        paymentMode === "upi"
+                          ? "UPI Transaction ID"
+                          : paymentMode === "bank_transfer"
+                          ? "Bank Transaction ID"
+                          : "Cheque Number"
+                      }`}
+                      value={referenceNumber}
+                      onChange={(e) => setReferenceNumber(e.target.value)}
+                    />
+                  </div>
+                )}
 
               {/* Notes */}
               <div className="space-y-2">
@@ -696,6 +870,14 @@ export default function DuesManagement() {
                   onChange={(e) => setPaymentNotes(e.target.value)}
                 />
               </div>
+
+              {/* Error Message for Advance Deduction */}
+              {advanceError && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{advanceError}</AlertDescription>
+                </Alert>
+              )}
 
               {/* Payment Summary */}
               <div className="bg-blue-50 p-3 rounded-lg border border-blue-200">
@@ -725,6 +907,20 @@ export default function DuesManagement() {
                       ).toLocaleString("en-IN")}
                     </span>
                   </div>
+                  {paymentMode === "advance_deduction" &&
+                    advanceBalance > 0 && (
+                      <div className="flex justify-between border-t pt-1">
+                        <span className="text-gray-600">
+                          Remaining Advance:
+                        </span>
+                        <span className="font-medium text-blue-600">
+                          ₹
+                          {(
+                            advanceBalance - parseFloat(paymentAmount || "0")
+                          ).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    )}
                 </div>
               </div>
             </div>
@@ -742,7 +938,11 @@ export default function DuesManagement() {
             <Button
               onClick={handleRecordPayment}
               disabled={
-                isProcessing || !paymentAmount || parseFloat(paymentAmount) <= 0
+                isProcessing ||
+                !paymentAmount ||
+                parseFloat(paymentAmount) <= 0 ||
+                (paymentMode === "advance_deduction" &&
+                  parseFloat(paymentAmount) > advanceBalance)
               }
               className="bg-green-600 hover:bg-green-700"
             >
@@ -753,8 +953,17 @@ export default function DuesManagement() {
                 </>
               ) : (
                 <>
-                  <CheckCircle className="h-4 w-4 mr-2" />
-                  Record Payment
+                  {paymentMode === "advance_deduction" ? (
+                    <>
+                      <Wallet className="h-4 w-4 mr-2" />
+                      Pay from Advance
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Record Payment
+                    </>
+                  )}
                 </>
               )}
             </Button>
